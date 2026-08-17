@@ -36,6 +36,9 @@ class AuctionPurchase:
     role: str
     price: float
     fair_value_before: float | None = None
+    market_value_before: float | None = None
+    expected_clearing_before: float | None = None
+    note: str = ""
 
 @dataclass
 class DataQualityReport:
