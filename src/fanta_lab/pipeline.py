@@ -8,6 +8,7 @@ from .sources.football_data_uk import FootballDataUKSource
 from .sources.fco_history import FCOHistoricalSource
 from .sources.bigballs import BigBallsSource
 from .sources.fantacalcio_dev import FantacalcioDevSource
+from .sources.api_football import APIFootballSource
 
 ROLE_MAP={'Goalkeeper':'P','Defender':'D','Midfielder':'C','Offence':'A','Attacker':'A','Forward':'A'}
 
@@ -38,9 +39,11 @@ def _season_label(y:int)->str:
 def build_dataset(season_start_year:int, fanta_season_label:str, football_token:str|None=None,
                   fantasy_df:pd.DataFrame|None=None, stats_years:tuple[int,...]|None=None,
                   require_current_fanta:bool=True, bigballs_token:str|None=None,
+                  api_football_token:str|None=None,
                   use_public_team_context:bool=True, use_fco_history:bool=True,
                   use_fantacalcio_dev_history:bool=True,
-                  use_big_five_newcomer_history:bool=True):
+                  use_big_five_newcomer_history:bool=True,
+                  use_api_football:bool=True):
     """Build a high-coverage master while keeping roster authority and enrichments distinct."""
     roster=FootballDataSource(football_token).serie_a_squads(season_start_year)
     roster['role']=roster['position_raw'].map(ROLE_MAP)
@@ -66,7 +69,7 @@ def build_dataset(season_start_year:int, fanta_season_label:str, football_token:
         master,unmatched_stats=fuzzy_join(master,agg,'_stats',89)
         report.notes.append(f'Understat: {len(agg)} historical player aggregates; {len(unmatched_stats)} unmatched names.')
 
-    # 2) Public fantasy-vote archive (2017-18 onward on the source site).
+    # 2) Public fantasy-vote archive.
     if use_fantacalcio_dev_history:
         try:
             dev=FantacalcioDevSource().history([_season_label(y) for y in years])
@@ -80,8 +83,7 @@ def build_dataset(season_start_year:int, fanta_season_label:str, football_token:
                         if c in g:
                             v=pd.to_numeric(g[c],errors='coerce').fillna(0); d[c]=(v*w).sum()/max(.001,w.sum())
                     rows.append(d)
-                devagg=pd.DataFrame(rows)
-                master,unmatched_dev=fuzzy_join(master,devagg,'_dev',88)
+                devagg=pd.DataFrame(rows); master,unmatched_dev=fuzzy_join(master,devagg,'_dev',88)
                 report.notes.append(f'fantacalcio.dev archive: {len(devagg)} player aggregates; {len(unmatched_dev)} unmatched.')
                 if 'dev_avg_vote' in master:
                     if 'avg_vote' not in master: master['avg_vote']=pd.NA
@@ -89,7 +91,7 @@ def build_dataset(season_start_year:int, fanta_season_label:str, football_token:
         except Exception as e:
             report.notes.append(f'fantacalcio.dev archive unavailable: {type(e).__name__}')
 
-    # 3) Previous-season team environment from free match CSVs.
+    # 3) Team environment from free match CSVs.
     if use_public_team_context:
         try:
             tf=FootballDataUKSource().team_features(season_start_year-1,'I1')
@@ -103,7 +105,7 @@ def build_dataset(season_start_year:int, fanta_season_label:str, football_token:
         except Exception as e:
             report.notes.append(f'football-data.co.uk unavailable: {type(e).__name__}')
 
-    # 4) Second fantasy-history source for cross-checking votes / appearances / quotations.
+    # 4) Second fantasy-history source.
     if use_fco_history:
         try:
             prev=f'{season_start_year-1}-{season_start_year}'
@@ -117,7 +119,43 @@ def build_dataset(season_start_year:int, fanta_season_label:str, football_token:
         except Exception as e:
             report.notes.append(f'Fantacalcio-Online history unavailable: {type(e).__name__}')
 
-    # 5) Optional big-five historical xG: critical for players arriving from abroad.
+    # 5) API-Football: detailed previous-season stats + current injury/suspension feed.
+    if api_football_token and use_api_football:
+        try:
+            af=APIFootballSource(api_football_token)
+            prev_players=af.players(season_start_year-1)
+            if len(prev_players):
+                master,unmatched_af=fuzzy_join(master,prev_players,'_af',90)
+                report.notes.append(f'API-Football previous-season stats: {len(prev_players)} rows; {len(unmatched_af)} unmatched.')
+                # Fill gaps only; Understat / fantasy vote layers keep priority where already present.
+                fills={'minutes':'af_minutes','goals':'af_goals','assists':'af_assists','shots':'af_shots','key_passes':'af_key_passes','yellow_cards':'af_yellow','red_cards':'af_red'}
+                for dst,src in fills.items():
+                    if src in master:
+                        if dst not in master: master[dst]=pd.NA
+                        master[dst]=pd.to_numeric(master[dst],errors='coerce').fillna(pd.to_numeric(master[src],errors='coerce'))
+                if 'af_rating' in master:
+                    if 'avg_vote' not in master: master['avg_vote']=pd.NA
+                    master['avg_vote']=pd.to_numeric(master['avg_vote'],errors='coerce').fillna(pd.to_numeric(master['af_rating'],errors='coerce'))
+                # Goalkeeper / penalty factual fields where the API provides them.
+                if 'af_penalties_missed' in master: master['penalties_missed']=pd.to_numeric(master['af_penalties_missed'],errors='coerce')
+                if 'af_penalties_saved' in master: master['penalties_saved_api']=pd.to_numeric(master['af_penalties_saved'],errors='coerce')
+            try:
+                current=af.serie_a(season_start_year)
+                cov=current.get('coverage',{})
+                injuries_enabled=bool(cov.get('injuries',False)) if isinstance(cov,dict) else False
+                if injuries_enabled:
+                    inj=af.injuries(season_start_year,int(current['id']))
+                    if len(inj):
+                        master,unmatched_inj=fuzzy_join(master,inj,'_injury',92)
+                        report.notes.append(f'API-Football current injuries/suspensions: {len(inj)} rows; {len(unmatched_inj)} unmatched.')
+                else:
+                    report.notes.append('API-Football current injury coverage flag is false/not started; no injury facts injected.')
+            except Exception as e:
+                report.notes.append(f'API-Football current injuries unavailable: {type(e).__name__}')
+        except Exception as e:
+            report.notes.append(f'API-Football enrichment unavailable: {type(e).__name__}')
+
+    # 6) Big-five historical xG: especially valuable for arrivals from abroad.
     if bigballs_token and use_big_five_newcomer_history:
         try:
             bb=BigBallsSource(bigballs_token); bbh=bb.big_five_history(list(years),limit=1000)
@@ -136,13 +174,17 @@ def build_dataset(season_start_year:int, fanta_season_label:str, football_token:
         except Exception as e:
             report.notes.append(f'BigBalls enrichment unavailable: {type(e).__name__}')
 
+    # Derived evidence flags and confidence.
     master['has_market_data']=master.get('fvm_1000',pd.Series(index=master.index,dtype=float)).notna()
     master['has_history']=pd.to_numeric(master.get('minutes',0),errors='coerce').fillna(0).gt(0) if 'minutes' in master else False
     master['has_external_history']=pd.to_numeric(master.get('external_minutes',0),errors='coerce').fillna(0).gt(0) if 'external_minutes' in master else False
     master['has_team_context']=master.get('team_attack_strength',pd.Series(index=master.index,dtype=float)).notna()
     fantasy_vote_col=master.get('dev_avg_vote',master.get('fco_avg_vote',pd.Series(index=master.index,dtype=float)))
     master['has_fantasy_history']=pd.to_numeric(fantasy_vote_col,errors='coerce').notna()
-    master['data_confidence']=(.22+.24*master['has_market_data'].astype(float)+.20*master['has_history'].astype(float)
-        +.12*master['has_external_history'].astype(float)+.10*master['has_team_context'].astype(float)
-        +.12*master['has_fantasy_history'].astype(float)).clip(0,1)
+    master['has_api_football']=master.get('api_football_player_id',pd.Series(index=master.index,dtype=float)).notna()
+    master['has_current_injury_fact']=master.get('injury_reason',pd.Series(index=master.index,dtype=object)).notna()
+    master['data_confidence']=(.18+.22*master['has_market_data'].astype(float)+.18*master['has_history'].astype(float)
+        +.10*master['has_external_history'].astype(float)+.09*master['has_team_context'].astype(float)
+        +.10*master['has_fantasy_history'].astype(float)+.10*master['has_api_football'].astype(float)
+        +.03*master['has_current_injury_fact'].astype(float)).clip(0,1)
     return master,report
