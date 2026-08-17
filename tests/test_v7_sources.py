@@ -3,6 +3,7 @@ import pandas as pd
 from src.fanta_lab.sources.football_data_uk import FootballDataUKSource
 from src.fanta_lab.sources.bigballs import BigBallsSource
 from src.fanta_lab.sources.fantacalcio_dev import FantacalcioDevSource
+from src.fanta_lab.sources.api_football import APIFootballSource
 
 
 def test_football_data_uk_season_code():
@@ -20,6 +21,22 @@ def test_bigballs_requires_key():
 
 def test_fantacalcio_dev_column_normalizer():
     assert FantacalcioDevSource._norm('Voto Medio') == 'voto medio'
+
+
+def test_api_football_flatten():
+    item={
+        'player':{'id':7,'name':'Test Player','age':25,'nationality':'Italy','height':'180 cm','weight':'75 kg','injured':True},
+        'statistics':[{'games':{'appearences':20,'lineups':15,'minutes':1400,'rating':'6.8'},'shots':{'total':40,'on':20},
+                       'goals':{'total':8,'assists':4,'conceded':0,'saves':0},'passes':{'key':22,'accuracy':83},
+                       'tackles':{'total':10,'interceptions':4},'dribbles':{'attempts':30,'success':18},
+                       'fouls':{'drawn':25,'committed':12},'cards':{'yellow':3,'red':0},
+                       'penalty':{'won':1,'commited':0,'scored':2,'missed':1,'saved':0}}]
+    }
+    x=APIFootballSource._flatten_player(item)
+    assert x['player']=='Test Player'
+    assert x['af_minutes']==1400
+    assert x['af_key_passes']==22
+    assert x['currently_injured'] is True
 
 
 def test_team_context_formula_shape(monkeypatch):
