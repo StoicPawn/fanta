@@ -17,11 +17,16 @@ class LeagueRules:
     assist: float = 1.0
     clean_sheet_gk: float = 1.0
     clean_sheet_def: float = 0.0
+    goal_conceded_gk: float = -1.0
+    penalty_saved: float = 3.0
+    penalty_missed: float = -3.0
+    own_goal: float = -2.0
     yellow: float = -0.5
     red: float = -1.0
     defense_modifier: bool = False
     defense_modifier_strength: float = 1.0
     base_vote_weight: float = 1.0
+    min_bid: int = 1
 
     def slots(self) -> Dict[str, int]:
         return {"P": self.slots_gk, "D": self.slots_def, "C": self.slots_mid, "A": self.slots_fwd}
@@ -49,7 +54,19 @@ class DataQualityReport:
     unmatched_players: List[str] = field(default_factory=list)
     stale_sources: List[str] = field(default_factory=list)
     source_counts: Dict[str, int] = field(default_factory=dict)
+    notes: List[str] = field(default_factory=list)
+    critical_missing_fields: List[str] = field(default_factory=list)
 
     @property
     def certified(self) -> bool:
-        return self.observed_teams == self.expected_teams and not self.missing_teams and self.player_count >= 400
+        return (
+            self.observed_teams == self.expected_teams
+            and not self.missing_teams
+            and self.player_count >= 400
+            and not self.stale_sources
+            and not self.critical_missing_fields
+        )
+
+    @property
+    def certification(self) -> str:
+        return "CERTIFIED" if self.certified else "NOT_CERTIFIED"
