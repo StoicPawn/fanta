@@ -29,7 +29,7 @@ def test_hard_cap_preserves_one_credit_per_remaining_slot():
     pool=pd.DataFrame([row()]+[row(f'Low{i}',60-i,4) for i in range(8)])
     rec=live_recommendation(pool.iloc[0],pool,state)
     assert rec['max_bid'] <= rec['hard_cap']
-    assert rec['hard_cap'] == 1  # 5 credits left, four unfilled slots -> reserve three after this purchase
+    assert rec['hard_cap'] == 2  # 5 left; buying this player must reserve 3 credits for the other 3 slots
 
 
 def test_real_market_bucket_scales_to_exact_budget():
