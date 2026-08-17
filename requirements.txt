@@ -2,6 +2,7 @@ pandas>=2.2
 numpy>=1.26
 requests>=2.32
 beautifulsoup4>=4.12
+lxml>=5.2
 rapidfuzz>=3.9
 pulp>=2.8
 streamlit>=1.37
