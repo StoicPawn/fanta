@@ -21,8 +21,6 @@ def estimate_minutes(row:pd.Series)->tuple[float,float,str]:
     if pd.notna(row.get('projected_minutes',np.nan)):
         pm=float(row['projected_minutes']); return float(np.clip(pm,0,3420)),.95,'manual'
     hist=_num(row,'minutes'); ext=_num(row,'external_minutes'); fvm=_num(row,'fvm_1000',np.nan); q=_num(row,'quotation',np.nan); start_prob=_num(row,'starting_probability',np.nan)
-    # injury_risk is an explicit user/model field. A verified current-injury flag is converted
-    # to a conservative temporary availability prior only when no explicit risk was supplied.
     explicit_injury=row.get('injury_risk',np.nan)
     if pd.notna(explicit_injury): injury_risk=float(np.clip(_num(row,'injury_risk',0),0,.95)); injury_src='injury_risk'
     elif bool(row.get('currently_injured',False)): injury_risk=.45; injury_src='current_injury_flag'
@@ -56,7 +54,10 @@ def project_player(row:pd.Series,rules:LeagueRules)->dict:
     sample=min(1,max(hist,ext*.75)/1800); realized_w=.35+.25*sample; pred_g90=realized_w*goals90+(1-realized_w)*xg90; pred_a90=realized_w*assists90+(1-realized_w)*xa90
     if hist<=0 and ext<=0:
         priors={'P':(0,0),'D':(.045,.045),'C':(.11,.11),'A':(.28,.10)}; pred_g90,pred_a90=priors.get(role,(.1,.1))
-    attack_strength=float(np.clip(_num(row,'team_attack_strength',1.0),.65,1.35)); defense_strength=float(np.clip(_num(row,'team_defense_strength',1.0),.65,1.35)); pred_g90*=attack_strength; pred_a90*=attack_strength
+    attack_strength=float(np.clip(_num(row,'team_attack_strength',1.0),.65,1.35)); defense_strength=float(np.clip(_num(row,'team_defense_strength',1.0),.65,1.35))
+    elo_factor=float(np.clip(_num(row,'team_elo_factor',1.0),.72,1.38)); elo_blend=float(np.sqrt(elo_factor))
+    attack_strength=float(np.clip(attack_strength*elo_blend,.60,1.45)); defense_strength=float(np.clip(defense_strength*elo_blend,.60,1.45))
+    pred_g90*=attack_strength; pred_a90*=attack_strength
     penalty_share=float(np.clip(_num(row,'penalty_share',0),0,1)); set_piece_share=float(np.clip(_num(row,'set_piece_share',0),0,1)); pred_g90+=.10*penalty_share; pred_a90+=.035*set_piece_share
     base_vote=_num(row,'avg_vote',6.0); vote_points=base_vote*apps90*rules.base_vote_weight; goal_pts=pred_g90*apps90*getattr(rules,ROLE_GOAL_FIELD.get(role,'goal_mid')); assist_pts=pred_a90*apps90*rules.assist
     card_pts=safe_rate(row,'yellow_cards')*apps90*rules.yellow+safe_rate(row,'red_cards')*apps90*rules.red; own_goal_pts=safe_rate(row,'own_goals')*apps90*rules.own_goal
@@ -68,7 +69,7 @@ def project_player(row:pd.Series,rules:LeagueRules)->dict:
     modifier=max(0,base_vote-5.8)*apps90*.22*rules.defense_modifier_strength if rules.defense_modifier and role in {'P','D'} else 0.0
     total=vote_points+goal_pts+assist_pts+card_pts+own_goal_pts+clean_pts+conceded_pts+saved_pen_pts+penalty_miss_pts+modifier
     data_conf=_num(row,'data_confidence',.35); reliability=float(np.clip(.55*min_conf+.45*data_conf,0,1)); uncertainty=max(6.0,abs(total)*(.08+.28*(1-reliability))); p10=total-1.2816*uncertainty; p90=total+1.2816*uncertainty
-    return {'projected_minutes':pm,'minutes_confidence':min_conf,'minutes_source':min_src,'pred_goal90':pred_g90,'pred_assist90':pred_a90,'independent_points':total,'projected_points_p10':p10,'projected_points_p50':total,'projected_points_p90':p90,'reliability':reliability,'modifier_marginal':modifier,'vote_points':vote_points,'bonus_points':total-vote_points}
+    return {'projected_minutes':pm,'minutes_confidence':min_conf,'minutes_source':min_src,'pred_goal90':pred_g90,'pred_assist90':pred_a90,'independent_points':total,'projected_points_p10':p10,'projected_points_p50':total,'projected_points_p90':p90,'reliability':reliability,'modifier_marginal':modifier,'vote_points':vote_points,'bonus_points':total-vote_points,'team_context_factor':attack_strength,'team_defense_factor':defense_strength}
 
 def add_projections(df:pd.DataFrame,rules:LeagueRules)->pd.DataFrame:
     rows=[project_player(r,rules) for _,r in df.iterrows()]; return pd.concat([df.reset_index(drop=True),pd.DataFrame(rows)],axis=1)
