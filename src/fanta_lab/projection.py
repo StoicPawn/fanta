@@ -20,7 +20,14 @@ def _external_rate(row,col):
 def estimate_minutes(row:pd.Series)->tuple[float,float,str]:
     if pd.notna(row.get('projected_minutes',np.nan)):
         pm=float(row['projected_minutes']); return float(np.clip(pm,0,3420)),.95,'manual'
-    hist=_num(row,'minutes'); ext=_num(row,'external_minutes'); fvm=_num(row,'fvm_1000',np.nan); q=_num(row,'quotation',np.nan); start_prob=_num(row,'starting_probability',np.nan); availability=float(np.clip(1-_num(row,'injury_risk',0),.35,1))
+    hist=_num(row,'minutes'); ext=_num(row,'external_minutes'); fvm=_num(row,'fvm_1000',np.nan); q=_num(row,'quotation',np.nan); start_prob=_num(row,'starting_probability',np.nan)
+    # injury_risk is an explicit user/model field. A verified current-injury flag is converted
+    # to a conservative temporary availability prior only when no explicit risk was supplied.
+    explicit_injury=row.get('injury_risk',np.nan)
+    if pd.notna(explicit_injury): injury_risk=float(np.clip(_num(row,'injury_risk',0),0,.95)); injury_src='injury_risk'
+    elif bool(row.get('currently_injured',False)): injury_risk=.45; injury_src='current_injury_flag'
+    else: injury_risk=0.0; injury_src=''
+    availability=float(np.clip(1-injury_risk,.35,1))
     if hist>0:
         prior=np.clip(hist*.94,450,3200)
         if not np.isnan(start_prob):prior=.65*prior+.35*(3420*np.clip(start_prob,0,1))
@@ -28,15 +35,17 @@ def estimate_minutes(row:pd.Series)->tuple[float,float,str]:
         if not np.isnan(fvm):prior=np.clip(prior*(.92+.16*min(1,fvm/250)),300,3300)
         src='history+market' if not np.isnan(fvm) else 'history'
         if not np.isnan(start_prob):src+='+starting_probability'
-        if availability<.995:src+='+injury_risk'
+        if injury_src:src+='+'+injury_src
         return float(prior),float(conf),src
     if ext>0:
         league_factor=float(np.clip(_num(row,'external_league_factor',.88),.55,1.15)); prior=np.clip(ext*.92*league_factor,350,3000)*availability
         if not np.isnan(start_prob):prior=.60*prior+.40*(3420*np.clip(start_prob,0,1))
-        return float(prior),float(min(.72,.35+ext/6500)),'external_history'
+        src='external_history'+('+'+injury_src if injury_src else '')
+        return float(prior),float(min(.72,.35+ext/6500)),src
     market=fvm if not np.isnan(fvm) else (q*8 if not np.isnan(q) else 20); pm=(500+min(2200,max(0,market)*6.2))*availability
     if not np.isnan(start_prob):pm=.50*pm+.50*(3420*np.clip(start_prob,0,1))
-    return float(np.clip(pm,250,2850)),.30,'market_prior_no_history'
+    src='market_prior_no_history'+('+'+injury_src if injury_src else '')
+    return float(np.clip(pm,250,2850)),.30,src
 
 def project_player(row:pd.Series,rules:LeagueRules)->dict:
     role=str(row.get('role','C')).upper(); pm,min_conf,min_src=estimate_minutes(row); apps90=pm/90; hist=_num(row,'minutes'); ext=_num(row,'external_minutes')
