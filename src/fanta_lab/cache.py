@@ -19,7 +19,7 @@ def _safe_key(namespace: str, key: str) -> str:
 
 def _paths(namespace: str, key: str) -> tuple[Path, Path]:
     stem = _safe_key(namespace, key)
-    return CACHE_DIR / f"{stem}.json", CACHE_DIR / f"{stem}.parquet"
+    return CACHE_DIR / f"{stem}.json", CACHE_DIR / f"{stem}.pkl"
 
 
 def cache_status(namespace: str, key: str, ttl_seconds: int) -> dict[str, Any]:
@@ -46,7 +46,8 @@ def read_dataframe(namespace: str, key: str, ttl_seconds: int, allow_stale: bool
         return None
     _, data_path = _paths(namespace, key)
     try:
-        return pd.read_parquet(data_path)
+        obj = pd.read_pickle(data_path)
+        return obj if isinstance(obj, pd.DataFrame) else None
     except Exception:
         return None
 
@@ -54,7 +55,7 @@ def read_dataframe(namespace: str, key: str, ttl_seconds: int, allow_stale: bool
 def write_dataframe(namespace: str, key: str, df: pd.DataFrame, metadata: dict[str, Any] | None = None) -> None:
     CACHE_DIR.mkdir(parents=True, exist_ok=True)
     meta_path, data_path = _paths(namespace, key)
-    df.to_parquet(data_path, index=False)
+    df.to_pickle(data_path)
     meta = {"created_at": time.time(), "rows": int(len(df)), **(metadata or {})}
     meta_path.write_text(json.dumps(meta, ensure_ascii=False, indent=2))
 
