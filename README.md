@@ -1,50 +1,70 @@
-# Fanta Auction Lab V7
+# Fanta Auction Lab V8
 
 Decision-support system for a Serie A fantasy-football auction. It keeps observed market information separate from an independent statistical valuation, converts both into league-specific expected fantasy points, and adapts bidding to the actual auction room.
 
-## Core principle
+## V8 focus
 
-A static fair price is insufficient. The system therefore separates sporting value, uncertainty, portfolio fair value, expected market clearing price and strategic MAX BID. If a top striker has fair value 100 but comparable players are disappearing and the room consistently clears above the model, the system can rationally recommend more than 100 rather than mechanically leaving the manager with unused cash and no elite supply.
+V8 moves from simply adding sources to **gap-driven data collection**. The system now measures, player by player, which information layers are missing and ranks the next source to add by expected value rather than collecting redundant data blindly.
 
-## V7 capabilities
+### Core capabilities
 
-1. **League configuration** — budget, roster slots, scoring, defence modifier, goalkeeper rules, penalties, own goals and minimum bid.
-2. **Lossless Serie A master** — current roster backbone plus fantasy-list reconciliation, with explicit certification.
-3. **Maximal real-data pipeline** — combines multiple free/optional-free sources instead of relying on one provider.
-4. **Independent player projection** — expected minutes, vote points, xG/xA shrinkage, external-league history, current team strength, availability signals and uncertainty P10/P50/P90.
-5. **Market comparison** — quotations/FVM and real-auction aggregate priors remain separate from the sporting model.
-6. **Auction Copilot** — budgets, slots, inflation, opponent aggressiveness, scarcity, liquidity and Monte Carlo clearing prices.
-7. **Self-calibration** — actual sale prices continuously correct later clearing forecasts with shrinkage.
-8. **Strategy Lab** — BUY NOW versus WAIT/SKIP optimises the entire remaining roster.
-9. **Persistence and notes** — auction state can be exported/restored and each opponent has a notebook.
-10. **Health dashboards** — dataset and auction-state consistency checks plus source-by-source coverage.
+- exact league scoring and roster configuration;
+- lossless current Serie A roster + current fantasy-list reconciliation;
+- independent expected-points model with P10/P50/P90 uncertainty;
+- market/FVM comparison kept separate from sporting valuation;
+- replacement-level fair prices and whole-roster optimisation;
+- live Auction Copilot with budgets, slots, inflation, opponent aggression, scarcity, liquidity and Monte Carlo clearing prices;
+- self-calibration from forecast-versus-actual auction prices;
+- BUY NOW vs WAIT/SKIP Strategy Lab;
+- persistence, notes, source health and player-level gap analysis.
 
-## Real-data sources now wired into the engine
+## Real-data sources wired into the engine
 
-- **football-data.org** — current Serie A teams and squads; roster authority layer. Free API token.
-- **Fantacalcio.it / user Listone** — fantasy eligibility, Classic/Mantra role, quotation and FVM. Market layer, not sporting truth.
-- **Understat** — recency-weighted Serie A player history: minutes, goals, assists, shots, key passes, xG, xA, npxG, xGChain and xGBuildup.
-- **fantacalcio.dev** — public multi-season fantasy archive (2017-18 onward on the site): fantamedia, average vote, goals, assists and appearances.
-- **football-data.co.uk** — free historical Serie A/Serie B match CSVs: results, shots, shots on target, corners and cards; used for team attack/defence environment.
-- **ClubElo** — current and historical European club Elo ratings via public CSV/API. Used to update team strength beyond last season's raw results and to handle promoted teams better.
-- **Fantacalcio-Online** — public historical quotation/stat tables used as a second fantasy cross-check.
-- **Fantacalcio-Online real-auction averages** — public prices actually paid, bucketed by league size/budget; auction-market prior only.
-- **API-Football / API-Sports** — optional free key (100 requests/day on the free plan): player profiles, appearances, lineups, minutes, ratings, shots, key passes, tackles, dribbles, fouls, cards, penalty stats plus current injury/suspension endpoint when the league-season coverage flag is enabled.
-- **Big Balls Sports Data** — optional free API key. Big-five xG leaderboards expose xG, xA, npxG, xGChain, xGBuildup, goals, assists, shots, key passes, matches and minutes, with historical coverage documented back to 2014. Especially useful for new Serie A arrivals from England, Spain, Germany or France.
+- **football-data.org** — current Serie A teams and squads; roster authority. Free token.
+- **Fantacalcio.it / user Listone** — fantasy role, quotation and FVM; market layer.
+- **Understat** — historical minutes, goals, assists, shots, key passes, xG, xA, npxG, xGChain and xGBuildup.
+- **fantacalcio.dev** — public multi-season fantasy history: fantamedia, average vote, goals, assists and appearances.
+- **football-data.co.uk** — free historical Serie A/Serie B match CSVs used for team attack/defence context.
+- **ClubElo** — current/historical club Elo strength.
+- **OpenFootball Italy** — CC0 Serie A 2026/27 schedule/results. V8 parses the full 380-match schedule and combines upcoming opponents with ClubElo into a short-horizon schedule-strength factor.
+- **Fantacalcio-Online** — historical fantasy/stat cross-check and separate real-auction aggregate price prior.
+- **API-Football / API-Sports** — optional free key: detailed individual stats plus current injury/suspension feed when coverage is enabled.
+- **Big Balls Sports Data** — optional free key: big-five xG history, especially useful for new arrivals from abroad.
 
-Open **Data Sources** from the Streamlit sidebar to build the richest master and see exactly how many players are covered by each layer.
+API keys can be passed in the UI or configured once as environment variables:
+
+```bash
+export FOOTBALL_DATA_TOKEN='...'
+export API_FOOTBALL_TOKEN='...'
+export BIGBALLS_TOKEN='...'
+```
+
+## Gap Analyzer
+
+Open **Gap Analyzer** from the Streamlit sidebar. It measures coverage of:
+
+- identity/roster;
+- fantasy market;
+- minutes;
+- goals/assists;
+- xG/xA;
+- discipline;
+- fantasy vote history;
+- team context;
+- availability/titolarità;
+- penalties/set pieces.
+
+For every player it produces `gap_count`, `gap_severity` and `missing_layers`, plus a source-priority table such as `availability -> API-Football`, `expected_stats -> Understat/BigBalls` or `fantasy_history -> fantacalcio.dev/Fantacalcio-Online`.
+
+## Schedule model
+
+The current 2026/27 schedule is fetched from the CC0 `openfootball/italy` repository. For each Serie A club the engine looks at the next configurable horizon (currently six matches), evaluates opponent Elo, home share and derives a bounded `schedule_ease_factor`. This is deliberately a smaller adjustment than underlying team/player quality.
 
 ## Provenance and failure policy
 
-Roster authority and enrichment are deliberately separated. Optional web sources fail softly and are logged in the coverage report; a failed enrichment never silently deletes a player. Name-keyed sources are fuzzy-matched with conservative thresholds and remain lower-confidence than roster authority. API-Football coverage flags are checked before current injury data are injected. Missing facts are never fabricated; model priors are explicitly marked as priors.
+Roster authority and enrichment remain separate. Optional sources fail softly and are logged; a broken enrichment never deletes a player. Missing facts are not fabricated. Priors are explicitly treated as priors and lower `data_confidence`/reliability.
 
-No claim is made that a public downloadable dataset of millions of raw Italian fantasy-auction transactions exists. The live market model therefore uses public aggregate real-auction prices, the current room's observed sales and simulated heterogeneous bidders. If a licensed raw-auction corpus becomes available it can be added without changing the architecture.
-
-## Important fields
-
-`independent_points`, `projected_points_p10/p50/p90`, `independent_score`, `market_score`, `edge_confidence_adjusted`, `fair_price`, `expected_clearing`, `MAX BID`, `strategic_bid`, `data_confidence`, `has_history`, `has_external_history`, `has_team_context`, `has_clubelo`, `has_api_football`, `has_current_injury_fact`, `has_fantasy_history`.
-
-Optional factual enrichment accepted by the model includes `starting_probability`, `injury_risk`, `penalty_share`, `set_piece_share`, `goals_conceded_per90`, `penalties_faced`, `penalty_save_rate` and `external_league_factor`.
+No public downloadable corpus of millions of raw Italian fantasy-auction transactions is assumed. Auction behaviour is therefore learned from public aggregate real-auction prices, the current room's observed sales, self-calibration and simulated heterogeneous bidders.
 
 ## Run
 
@@ -55,7 +75,7 @@ pip install -r requirements.txt
 streamlit run app.py
 ```
 
-Open **Strategy Lab**, **Advanced Settings & Health** and **Data Sources** from the Streamlit sidebar.
+Use **Data Sources** to build the master, **Gap Analyzer** to see what is still missing, **Player Intelligence** for valuation, **Auction LIVE** during the auction, and **Strategy Lab** for whole-roster BUY-vs-WAIT decisions.
 
 ## Tests
 
