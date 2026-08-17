@@ -17,6 +17,7 @@ sources=pd.DataFrame([
     ['Understat','Performance','minuti, gol, assist, xG, xA, npxG, xGChain, xGBuildup, shots, key passes','Pubblico','MODEL'],
     ['fantacalcio.dev','Storico fantasy','fantamedia, voto medio, gol, assist, presenze; archivio multi-stagione','Pubblico','MODEL/CROSS-CHECK'],
     ['football-data.co.uk','Contesto squadra','gol, tiri, tiri in porta, corner, cartellini; Serie A/Serie B storiche','CSV gratuito','TEAM MODEL'],
+    ['ClubElo','Forza club corrente','rating Elo corrente/storico per club europei','CSV/API pubblico','TEAM STRENGTH'],
     ['Fantacalcio-Online','Storico/quotazioni','voti, presenze, quotazioni e statistiche pubbliche','Pubblico','CROSS-CHECK'],
     ['Fantacalcio-Online aste','Prezzi reali aggregati','prezzi medi realmente pagati per bucket partecipanti/budget','Pubblico','AUCTION PRIOR'],
     ['API-Football / API-Sports','Availability + dettaglio','infortuni/squalifiche, minuti, rating, tiri, passaggi chiave, tackle, cartellini, rigori, profilo','Free API key · 100 req/day','INJURY/DETAIL'],
@@ -35,6 +36,7 @@ with a:
     label=st.text_input('Stagione Fantacalcio','2026/27')
 with b:
     use_team=st.toggle('football-data.co.uk team context',True)
+    use_elo=st.toggle('ClubElo current team strength',True)
     use_dev=st.toggle('fantacalcio.dev multi-season archive',True)
     use_fco=st.toggle('Fantacalcio-Online cross-check',True)
     use_api=st.toggle('API-Football stats + injuries',True)
@@ -47,7 +49,7 @@ if st.button('COSTRUISCI DATASET MASSIMO',type='primary',use_container_width=Tru
         master,report=build_dataset(
             season,label,football_token or None,fantasy_df=fdf,require_current_fanta=True,
             bigballs_token=bigballs_token or None,api_football_token=api_football_token or None,
-            use_public_team_context=use_team,use_fco_history=use_fco,
+            use_public_team_context=use_team,use_clubelo=use_elo,use_fco_history=use_fco,
             use_fantacalcio_dev_history=use_dev,use_api_football=use_api,
             use_big_five_newcomer_history=use_big,
         )
@@ -67,7 +69,8 @@ if 'players' in st.session_state and isinstance(st.session_state.players,pd.Data
         'Storico estero':int(df.get('has_external_history',pd.Series(False,index=df.index)).fillna(False).sum()),
         'API-Football':int(df.get('has_api_football',pd.Series(False,index=df.index)).fillna(False).sum()),
         'Injury facts':int(df.get('has_current_injury_fact',pd.Series(False,index=df.index)).fillna(False).sum()),
-        'Contesto squadra':int(df.get('has_team_context',pd.Series(False,index=df.index)).fillna(False).sum()),
+        'Team match context':int(df.get('has_team_context',pd.Series(False,index=df.index)).fillna(False).sum()),
+        'ClubElo':int(df.get('has_clubelo',pd.Series(False,index=df.index)).fillna(False).sum()),
         'Storico fantasy':int(df.get('has_fantasy_history',pd.Series(False,index=df.index)).fillna(False).sum()),
     }
     cols=st.columns(4)
@@ -86,5 +89,5 @@ if 'players' in st.session_state and isinstance(st.session_state.players,pd.Data
         except Exception as e:
             st.warning(f'Fonte aste non disponibile: {e}')
 
-    show=[c for c in ['player','team','role','quotation','fvm_1000','market_auction_price','minutes','xg','xa','dev_avg_vote','dev_fantamedia','af_minutes','af_rating','af_key_passes','currently_injured','injury_reason','external_minutes','external_xg','external_xa','team_attack_strength','team_defense_strength','data_confidence'] if c in df]
+    show=[c for c in ['player','team','role','quotation','fvm_1000','market_auction_price','minutes','xg','xa','dev_avg_vote','dev_fantamedia','af_minutes','af_rating','af_key_passes','currently_injured','injury_reason','external_minutes','external_xg','external_xa','team_attack_strength','team_defense_strength','team_elo','team_elo_factor','data_confidence'] if c in df]
     st.dataframe(df[show].sort_values('data_confidence',ascending=False) if 'data_confidence' in show else df[show],use_container_width=True,height=600)
