@@ -24,7 +24,6 @@ class AuctionState:
         ratios=[float(p.price)/float(p.fair_value_before) for p in ps]
         if len(ratios)<3 and role is not None: return self.inflation(None)
         if len(ratios)<3:return 1.0
-        # recent sales matter more, but median prevents one irrational purchase from dominating
         recent=ratios[-20:]
         med=float(np.median(recent)); q=float(np.quantile(recent,.65)) if len(recent)>=5 else med
         return float(np.clip(.7*med+.3*q,.65,2.20))
@@ -32,7 +31,8 @@ class AuctionState:
         ps=[p for p in self.purchases if p.market_value_before and p.market_value_before>0 and (role is None or p.role==role)]
         ratios=[float(p.price)/float(p.market_value_before) for p in ps]
         if len(ratios)<3 and role is not None:return self.market_inflation(None)
-        return float(np.clip(np.median(ratios[-20:]),.65,2.2)) if len(ratios)>=3 else 1.0
+        if len(ratios)<3:return self.inflation(role)
+        return float(np.clip(np.median(ratios[-20:]),.65,2.2))
     def manager_aggression(self,m,role:str|None=None):
         ps=[p for p in self.purchases if p.manager==m and p.fair_value_before and p.fair_value_before>0 and (role is None or p.role==role)]
         if len(ps)<2:return 1.0
@@ -83,10 +83,11 @@ def _top_supply(pool:pd.DataFrame,state:AuctionState,role:str,player_points:floa
 
 
 def simulated_clearing_price(player_row:pd.Series,pool:pd.DataFrame,state:AuctionState,n:int=1200)->dict:
-    """Synthetic skilled-human market: each rival gets a noisy reservation value.
+    """Synthetic skilled-human market with heterogeneous reservation values.
 
-    It is calibrated by observed room inflation, optional public real-auction averages,
-    individual aggressiveness, remaining budget, role need and top-tier scarcity.
+    Clearing is modelled as second-highest reservation + one credit, capped by the
+    highest reservation. This approximates an ascending fantasy auction better than
+    simply using the winner's private maximum willingness-to-pay.
     """
     role=str(player_row.role); fair=max(1.0,float(player_row.get('fair_price',1) or 1))
     market_raw=player_row.get('market_auction_price',np.nan)
@@ -109,13 +110,13 @@ def simulated_clearing_price(player_row:pd.Series,pool:pd.DataFrame,state:Auctio
             hard=max(0,state.remaining(m)-max(0,sum(state.slots_left(m).values())-1))
             if hard<1: continue
             aggr=state.manager_aggression(m,role)
-            # heterogeneous humans: lognormal around rational reservation value
             shock=float(rng.lognormal(mean=-.5*.16**2,sigma=.16))
             reservation=anchor*aggr*shock
             bids.append(min(hard,reservation))
         if bids:
             bids.sort(reverse=True)
-            clears.append(min(max(1,bids[0]+1),max(bids)))
+            if len(bids)>=2: clears.append(min(bids[0],bids[1]+1.0))
+            else: clears.append(min(bids[0],max(1.0,.55*anchor)))
         else: clears.append(1.0)
     a=np.asarray(clears,dtype=float)
     return {'p50':float(np.quantile(a,.50)),'p65':float(np.quantile(a,.65)),'p80':float(np.quantile(a,.80)),
@@ -132,15 +133,12 @@ def live_recommendation(player_row:pd.Series,pool:pd.DataFrame,state:AuctionStat
     confidence=float(player_row.get('reliability',.5) or .5)
     edge=float(player_row.get('edge_confidence_adjusted',player_row.get('edge_vs_market',0)) or 0)
     market=player_row.get('market_auction_price',np.nan); market=float(market) if pd.notna(market) else fair
-    # opportunity cost of waiting: when comparable top supply is thinner than solvent demand, pay a survival premium
     solvent=len(state.competing_managers(role)); shortage=max(0,solvent+1-supply['better_or_equal'])/max(1,solvent+1)
     my_role_need=left.get(role,0); role_budget_share=state.discretionary_budget(state.my_manager)/max(1,sum(left.values()))
     urgency=float(np.clip(.35*supply['scarcity']+.35*shortage+.20*sim['demand']+.10*(my_role_need/max(1,left.get(role,1))),0,1.75))
     clearing_target=(1-risk_tolerance)*sim['p50']+risk_tolerance*sim['p80']
     model_ceiling=max(fair, .72*fair+.28*market) * (1+.15*urgency) * (.90+.10*confidence)
-    # Never lose all elite supply merely because the static fair value was one credit lower.
     strategic=max(fair, min(clearing_target,model_ceiling if shortage<.5 else model_ceiling*(1+.12*shortage)))
-    # if there is lots of discretionary budget per remaining slot, prices naturally clear higher
     liquidity_factor=float(np.clip(state.room_liquidity()/max(1,role_budget_share),.85,1.18))
     strategic*=liquidity_factor
     max_bid=int(min(hard_cap,max(1,math.ceil(strategic)))) if hard_cap>=1 else 0
