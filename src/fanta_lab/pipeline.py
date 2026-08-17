@@ -7,6 +7,7 @@ from .sources.understat import UnderstatSource
 from .sources.football_data_uk import FootballDataUKSource
 from .sources.fco_history import FCOHistoricalSource
 from .sources.bigballs import BigBallsSource
+from .sources.fantacalcio_dev import FantacalcioDevSource
 
 ROLE_MAP={'Goalkeeper':'P','Defender':'D','Midfielder':'C','Offence':'A','Attacker':'A','Forward':'A'}
 
@@ -30,16 +31,17 @@ def _weighted_player_history(frames:list[pd.DataFrame], weights:list[float]) -> 
     return pd.DataFrame(agg)
 
 
+def _season_label(y:int)->str:
+    return f'{y}-{str(y+1)[2:]}'
+
+
 def build_dataset(season_start_year:int, fanta_season_label:str, football_token:str|None=None,
                   fantasy_df:pd.DataFrame|None=None, stats_years:tuple[int,...]|None=None,
                   require_current_fanta:bool=True, bigballs_token:str|None=None,
                   use_public_team_context:bool=True, use_fco_history:bool=True,
+                  use_fantacalcio_dev_history:bool=True,
                   use_big_five_newcomer_history:bool=True):
-    """Build the master with roster authority + as many free enrichments as available.
-
-    Hard failures are limited to roster/list certification. Optional sources fail softly and
-    add provenance notes. This keeps the auction usable when a third-party site changes.
-    """
+    """Build a high-coverage master while keeping roster authority and enrichments distinct."""
     roster=FootballDataSource(football_token).serie_a_squads(season_start_year)
     roster['role']=roster['position_raw'].map(ROLE_MAP)
     if fantasy_df is None:
@@ -50,8 +52,9 @@ def build_dataset(season_start_year:int, fanta_season_label:str, football_token:
     master,report=build_master_roster(roster,fantasy_df)
     report.notes.append('Roster authority: football-data.org + current fantasy list reconciliation.')
 
-    # 1) Serie A player history: Understat, three recency-weighted seasons.
     years=stats_years or (season_start_year-1,season_start_year-2,season_start_year-3)
+
+    # 1) Serie A xG-style player history.
     hist=[]
     for y in years:
         try:
@@ -61,25 +64,46 @@ def build_dataset(season_start_year:int, fanta_season_label:str, football_token:
     if hist:
         agg=_weighted_player_history(hist,[.58,.27,.15])
         master,unmatched_stats=fuzzy_join(master,agg,'_stats',89)
-        report.notes.append(f'Understat: {len(agg)} historical player rows aggregated; {len(unmatched_stats)} unmatched names.')
+        report.notes.append(f'Understat: {len(agg)} historical player aggregates; {len(unmatched_stats)} unmatched names.')
 
-    # 2) Previous-season team environment from free match CSVs.
+    # 2) Public fantasy-vote archive (2017-18 onward on the source site).
+    if use_fantacalcio_dev_history:
+        try:
+            dev=FantacalcioDevSource().history([_season_label(y) for y in years])
+            if len(dev):
+                dev['weight']=dev.dev_season.map({_season_label(years[0]):.58,_season_label(years[1]):.27,_season_label(years[2]):.15}).fillna(.1)
+                rows=[]
+                for player,g in dev.groupby('player'):
+                    w=pd.to_numeric(g.weight,errors='coerce').fillna(.1)
+                    d={'player':player,'dev_history_seasons':int(g.dev_season.nunique())}
+                    for c in ['dev_fantamedia','dev_avg_vote','dev_goals','dev_assists','dev_appearances']:
+                        if c in g:
+                            v=pd.to_numeric(g[c],errors='coerce').fillna(0); d[c]=(v*w).sum()/max(.001,w.sum())
+                    rows.append(d)
+                devagg=pd.DataFrame(rows)
+                master,unmatched_dev=fuzzy_join(master,devagg,'_dev',88)
+                report.notes.append(f'fantacalcio.dev archive: {len(devagg)} player aggregates; {len(unmatched_dev)} unmatched.')
+                if 'dev_avg_vote' in master:
+                    if 'avg_vote' not in master: master['avg_vote']=pd.NA
+                    master['avg_vote']=pd.to_numeric(master['avg_vote'],errors='coerce').fillna(pd.to_numeric(master['dev_avg_vote'],errors='coerce'))
+        except Exception as e:
+            report.notes.append(f'fantacalcio.dev archive unavailable: {type(e).__name__}')
+
+    # 3) Previous-season team environment from free match CSVs.
     if use_public_team_context:
         try:
             tf=FootballDataUKSource().team_features(season_start_year-1,'I1')
             if len(tf):
-                # Team names are fewer and distinctive: fuzzy join through a temporary team frame.
                 teams=pd.DataFrame({'player':master['team'].dropna().astype(str).unique()})
                 src=tf.rename(columns={'team':'player'})
-                joined,_=fuzzy_join(teams,src,'_teamctx',82)
-                joined=joined.rename(columns={'player':'team'})
+                joined,_=fuzzy_join(teams,src,'_teamctx',82); joined=joined.rename(columns={'player':'team'})
                 cols=['team']+[c for c in joined.columns if c.startswith('team_') or c.endswith('_pg')]
                 master=master.merge(joined[cols].drop_duplicates('team'),on='team',how='left')
                 report.notes.append(f'football-data.co.uk: team context loaded for {int(master.team_attack_strength.notna().sum()) if "team_attack_strength" in master else 0} player rows.')
         except Exception as e:
             report.notes.append(f'football-data.co.uk unavailable: {type(e).__name__}')
 
-    # 3) Public historical fantasy vote/appearance context.
+    # 4) Second fantasy-history source for cross-checking votes / appearances / quotations.
     if use_fco_history:
         try:
             prev=f'{season_start_year-1}-{season_start_year}'
@@ -87,17 +111,17 @@ def build_dataset(season_start_year:int, fanta_season_label:str, football_token:
             if len(fco):
                 master,unmatched_fco=fuzzy_join(master,fco,'_fco',88)
                 report.notes.append(f'Fantacalcio-Online history: {len(fco)} rows; {len(unmatched_fco)} unmatched.')
+                if 'fco_avg_vote' in master:
+                    if 'avg_vote' not in master: master['avg_vote']=pd.NA
+                    master['avg_vote']=pd.to_numeric(master['avg_vote'],errors='coerce').fillna(pd.to_numeric(master['fco_avg_vote'],errors='coerce'))
         except Exception as e:
             report.notes.append(f'Fantacalcio-Online history unavailable: {type(e).__name__}')
 
-    # 4) Optional BigBalls big-five history: especially valuable for newcomers from abroad.
-    # The provider itself documents xG history back to 2014. We only use recent years here.
+    # 5) Optional big-five historical xG: critical for players arriving from abroad.
     if bigballs_token and use_big_five_newcomer_history:
         try:
-            bb=BigBallsSource(bigballs_token)
-            bbh=bb.big_five_history(list(years),limit=1000)
+            bb=BigBallsSource(bigballs_token); bbh=bb.big_five_history(list(years),limit=1000)
             if len(bbh):
-                # Aggregate by name across seasons/leagues. Prefix columns so Serie A history remains primary.
                 bbh['weight']=bbh['source_season'].astype(str).map({str(years[0]):.58,str(years[1]):.27,str(years[2]):.15}).fillna(.12)
                 nums=[c for c in ['matches','minutes','goals','assists','shots','key_passes','xg','xa','npxg','xg_chain','xg_buildup'] if c in bbh]
                 rows=[]
@@ -107,8 +131,7 @@ def build_dataset(season_start_year:int, fanta_season_label:str, football_token:
                     for c in nums:
                         v=pd.to_numeric(g[c],errors='coerce').fillna(0); d['external_'+c]=(v*w).sum()/max(.001,w.sum())
                     rows.append(d)
-                ext=pd.DataFrame(rows)
-                master,unmatched_ext=fuzzy_join(master,ext,'_bigfive',90)
+                ext=pd.DataFrame(rows); master,unmatched_ext=fuzzy_join(master,ext,'_bigfive',90)
                 report.notes.append(f'BigBalls big-five history: {len(ext)} player aggregates; {len(unmatched_ext)} unmatched.')
         except Exception as e:
             report.notes.append(f'BigBalls enrichment unavailable: {type(e).__name__}')
@@ -117,11 +140,9 @@ def build_dataset(season_start_year:int, fanta_season_label:str, football_token:
     master['has_history']=pd.to_numeric(master.get('minutes',0),errors='coerce').fillna(0).gt(0) if 'minutes' in master else False
     master['has_external_history']=pd.to_numeric(master.get('external_minutes',0),errors='coerce').fillna(0).gt(0) if 'external_minutes' in master else False
     master['has_team_context']=master.get('team_attack_strength',pd.Series(index=master.index,dtype=float)).notna()
-    master['has_fantasy_history']=master.get('fco_avg_vote',pd.Series(index=master.index,dtype=float)).notna()
-    # Confidence rewards independent corroboration, capped below 1 unless multiple layers agree.
-    master['data_confidence']=(
-        .25 + .25*master['has_market_data'].astype(float) + .22*master['has_history'].astype(float)
-        + .10*master['has_external_history'].astype(float) + .10*master['has_team_context'].astype(float)
-        + .08*master['has_fantasy_history'].astype(float)
-    ).clip(0,1)
+    fantasy_vote_col=master.get('dev_avg_vote',master.get('fco_avg_vote',pd.Series(index=master.index,dtype=float)))
+    master['has_fantasy_history']=pd.to_numeric(fantasy_vote_col,errors='coerce').notna()
+    master['data_confidence']=(.22+.24*master['has_market_data'].astype(float)+.20*master['has_history'].astype(float)
+        +.12*master['has_external_history'].astype(float)+.10*master['has_team_context'].astype(float)
+        +.12*master['has_fantasy_history'].astype(float)).clip(0,1)
     return master,report
