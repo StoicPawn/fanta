@@ -30,6 +30,14 @@ def test_simulation_is_cached_for_same_state():
     assert first==second and len(state._sim_cache)==size==1
 
 
+def test_forecast_calibration_learns_systematic_underprediction():
+    r=LeagueRules(budget=500,managers=4,slots_gk=1,slots_def=1,slots_mid=1,slots_fwd=4)
+    s=AuctionState(r,['Me','A','B','C'],'Me')
+    for i in range(5):
+        s.add_purchase(AuctionPurchase('A',f'P{i}','A',120,100,100,100))
+    assert s.forecast_calibration('A')>1.0
+
+
 def test_dataset_health_detects_duplicate_and_team_gap():
     df=pd.DataFrame([{'player':'X','team':'A','role':'A','fvm_1000':10,'minutes':100},{'player':'X','team':'A','role':'A','fvm_1000':10,'minutes':100}])
     h=dataset_health(df)
