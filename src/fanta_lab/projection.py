@@ -52,7 +52,6 @@ def project_player(row:pd.Series,rules:LeagueRules)->dict:
     if hist<=0 and ext<=0:
         priors={'P':(0,0),'D':(.045,.045),'C':(.11,.11),'A':(.28,.10)}; pred_g90,pred_a90=priors.get(role,(.1,.1))
     attack_strength=float(np.clip(_num(row,'team_attack_strength',1.0),.65,1.35)); defense_strength=float(np.clip(_num(row,'team_defense_strength',1.0),.65,1.35)); elo_factor=float(np.clip(_num(row,'team_elo_factor',1.0),.72,1.38)); elo_blend=float(np.sqrt(elo_factor)); schedule=float(np.clip(_num(row,'schedule_ease_factor',1.0),.88,1.12))
-    # Schedule is deliberately a smaller, short-horizon adjustment than team quality.
     attack_strength=float(np.clip(attack_strength*elo_blend*(.6+.4*schedule),.60,1.45)); defense_strength=float(np.clip(defense_strength*elo_blend*(.7+.3*schedule),.60,1.45))
     pred_g90*=attack_strength; pred_a90*=attack_strength
     penalty_share=float(np.clip(_num(row,'penalty_share',0),0,1)); set_piece_share=float(np.clip(_num(row,'set_piece_share',0),0,1)); pred_g90+=.10*penalty_share; pred_a90+=.035*set_piece_share
@@ -62,8 +61,11 @@ def project_player(row:pd.Series,rules:LeagueRules)->dict:
     conceded_pts=saved_pen_pts=0.0
     if role=='P':
         gc90=_num(row,'goals_conceded_per90',1.25)/defense_strength; conceded_pts=gc90*apps90*rules.goal_conceded_gk; saved_pen_pts=safe_rate(row,'penalties_faced')*apps90*np.clip(_num(row,'penalty_save_rate',.18),0,1)*rules.penalty_saved
-    penalty_miss_pts=safe_rate(row,'penalties_missed')*apps90*rules.penalty_missed; modifier=max(0,base_vote-5.8)*apps90*.22*rules.defense_modifier_strength if rules.defense_modifier and role in {'P','D'} else 0.0
-    total=vote_points+goal_pts+assist_pts+card_pts+own_goal_pts+clean_pts+conceded_pts+saved_pen_pts+penalty_miss_pts+modifier
+    penalty_miss_pts=safe_rate(row,'penalties_missed')*apps90*rules.penalty_missed
+    # Defence modifier is deliberately NOT assigned as an individual point bonus here.
+    # It is evaluated on the selected P+D unit by target_engine.expected_defence_modifier.
+    modifier=0.0
+    total=vote_points+goal_pts+assist_pts+card_pts+own_goal_pts+clean_pts+conceded_pts+saved_pen_pts+penalty_miss_pts
     data_conf=_num(row,'data_confidence',.35); reliability=float(np.clip(.55*min_conf+.45*data_conf,0,1)); uncertainty=max(6.0,abs(total)*(.08+.28*(1-reliability))); p10=total-1.2816*uncertainty; p90=total+1.2816*uncertainty
     return {'projected_minutes':pm,'minutes_confidence':min_conf,'minutes_source':min_src,'pred_goal90':pred_g90,'pred_assist90':pred_a90,'independent_points':total,'projected_points_p10':p10,'projected_points_p50':total,'projected_points_p90':p90,'reliability':reliability,'modifier_marginal':modifier,'vote_points':vote_points,'bonus_points':total-vote_points,'team_context_factor':attack_strength,'team_defense_factor':defense_strength,'schedule_factor_used':schedule}
 
