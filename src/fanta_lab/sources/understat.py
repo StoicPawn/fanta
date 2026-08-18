@@ -16,7 +16,7 @@ class UnderstatSource:
     Primary path: parse the public Understat league page.
     Historical fallback: a public GitHub mirror of aggregated Understat player data.
     The fallback is important in CI environments where understat.com may block or
-    vary HTML responses.  Both paths expose the same normalized fields.
+    vary HTML responses. Both paths expose the same normalized fields.
     """
 
     URL = "https://understat.com/league/Serie_A/{season}"
@@ -24,6 +24,8 @@ class UnderstatSource:
         "https://raw.githubusercontent.com/vibedatascience/"
         "understat_players_aggregated/main/understat_players_aggregated_2014_td.csv"
     )
+    _MIRROR_CACHE: pd.DataFrame | None = None
+    _DIRECT_DISABLED_REASON: str | None = None
 
     def __init__(self, timeout: int = 30, allow_mirror: bool = True):
         self.timeout = timeout
@@ -59,8 +61,6 @@ class UnderstatSource:
         for raw in candidates:
             try:
                 data = json.loads(raw)
-                # Some Understat helper libraries report a dict wrapper, while the
-                # league page has historically exposed a bare list.
                 if isinstance(data, dict) and isinstance(data.get("players"), list):
                     data = data["players"]
                 if isinstance(data, list):
@@ -80,8 +80,6 @@ class UnderstatSource:
             "npxG": "npxg",
             "xGChain": "xg_chain",
             "xGBuildup": "xg_buildup",
-            "yellow_cards": "yellow_cards",
-            "red_cards": "red_cards",
         }
         out = df.rename(columns=ren).copy()
         numeric = [
@@ -100,7 +98,7 @@ class UnderstatSource:
     def _league_players_direct(self, season_start_year: int) -> pd.DataFrame:
         r = requests.get(
             self.URL.format(season=season_start_year),
-            timeout=self.timeout,
+            timeout=min(self.timeout, 8),
             headers={
                 "User-Agent": "Mozilla/5.0 (compatible; FantaAuctionLab/1.0; +https://github.com/StoicPawn/fanta)",
                 "Accept": "text/html,application/xhtml+xml",
@@ -110,7 +108,9 @@ class UnderstatSource:
         data = self._extract_players_payload(r.text)
         return self._normalize(pd.DataFrame(data), season_start_year, "understat-public")
 
-    def _league_players_mirror(self, season_start_year: int) -> pd.DataFrame:
+    def _load_mirror(self) -> pd.DataFrame:
+        if UnderstatSource._MIRROR_CACHE is not None:
+            return UnderstatSource._MIRROR_CACHE
         r = requests.get(
             self.MIRROR_URL,
             timeout=max(self.timeout, 45),
@@ -120,6 +120,11 @@ class UnderstatSource:
         df = pd.read_csv(io.StringIO(r.text))
         if "league" not in df or "year" not in df:
             raise RuntimeError("Understat mirror schema inatteso")
+        UnderstatSource._MIRROR_CACHE = df
+        return df
+
+    def _league_players_mirror(self, season_start_year: int) -> pd.DataFrame:
+        df = self._load_mirror()
         year = pd.to_numeric(df["year"], errors="coerce")
         subset = df[df["league"].astype(str).eq("Serie_A") & year.eq(int(season_start_year))].copy()
         if subset.empty:
@@ -127,11 +132,16 @@ class UnderstatSource:
         return self._normalize(subset, season_start_year, "understat-github-mirror")
 
     def league_players(self, season_start_year: int) -> pd.DataFrame:
-        direct_error = None
-        try:
-            return self._league_players_direct(season_start_year)
-        except Exception as exc:
-            direct_error = exc
+        direct_error: Exception | None = None
+        if UnderstatSource._DIRECT_DISABLED_REASON is None:
+            try:
+                return self._league_players_direct(season_start_year)
+            except Exception as exc:
+                direct_error = exc
+                UnderstatSource._DIRECT_DISABLED_REASON = str(exc)[:300]
+        else:
+            direct_error = RuntimeError(UnderstatSource._DIRECT_DISABLED_REASON)
+
         if self.allow_mirror:
             try:
                 out = self._league_players_mirror(season_start_year)
