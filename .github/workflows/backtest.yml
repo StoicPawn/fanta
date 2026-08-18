@@ -3,6 +3,7 @@ name: historical-backtests
 on:
   workflow_dispatch:
   push:
+    branches: [main]
     paths:
       - 'src/fanta_lab/backtest.py'
       - 'src/fanta_lab/projection.py'
@@ -11,6 +12,9 @@ on:
       - 'src/fanta_lab/sources/understat.py'
       - 'requirements.txt'
       - '.github/workflows/backtest.yml'
+
+permissions:
+  contents: write
 
 jobs:
   backtest:
@@ -71,3 +75,13 @@ jobs:
         with:
           name: backtest-aggregate
           path: artifacts/aggregate
+      - name: Persist latest aggregate on main
+        run: |
+          mkdir -p backtests/latest
+          cp artifacts/aggregate/summary_all.csv backtests/latest/summary_all.csv
+          cp artifacts/aggregate/report_all.md backtests/latest/report_all.md
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add backtests/latest
+          git diff --cached --quiet || git commit -m 'chore(backtest): persist latest historical validation'
+          git push
