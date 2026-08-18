@@ -1,40 +1,64 @@
-# Fanta Auction Lab V9
+# Fanta Auction Lab
 
-Decision-support system for a Serie A fantasy-football auction. It keeps observed market information separate from an independent statistical valuation, converts both into league-specific expected fantasy points, and adapts bidding to the actual auction room.
+Decision-support system for a Serie A fantasy-football auction. It keeps observed market information separate from an independent statistical valuation, converts sporting projections into the exact scoring rules of the league, optimises a complete target squad and adapts bidding to the actual auction room.
 
-## V9 focus
+## Product modules
 
-V9 adds a **source-control layer** on top of the V8 gap-driven pipeline. The system now knows not only which player-data layers are missing, but also how fresh each source should be, which layers are critical, when a refresh is worth spending API quota and when cached/stale data are safer than repeatedly hitting a provider.
+The Streamlit interface now follows a clear workflow rather than exposing overlapping tools:
 
-### Core capabilities
+1. **Data Sources** — build and certify the current Serie A player master.
+2. **Formazione consigliata** — dynamic target squad; it changes with rules, budget, purchases and players already sold.
+3. **Ranking giocatori** — complete independent ranking, uncertainty, VORP, fair price and downstream market comparison.
+4. **Command Center** — the live-auction screen: MAX BID, expected clearing price, shortage risk, immediate replacements, room state and opponent notes.
+5. **Strategy Lab** — whole-roster BUY-vs-WAIT scenario analysis and continuation plans.
+6. **Gap Analyzer** — player-level missing-data analysis.
+7. **Source Control** — source registry, coverage/freshness policy and cache controls.
+8. **Advanced settings & health** — uncommon scoring rules, dataset readiness and auction consistency checks.
 
-- exact league scoring and roster configuration;
-- lossless current Serie A roster + current fantasy-list reconciliation;
-- independent expected-points model with P10/P50/P90 uncertainty;
-- market/FVM comparison kept separate from sporting valuation;
-- replacement-level fair prices and whole-roster optimisation;
-- live Auction Copilot with budgets, slots, inflation, opponent aggression, scarcity, liquidity and Monte Carlo clearing prices;
-- self-calibration from forecast-versus-actual auction prices;
-- BUY NOW vs WAIT/SKIP Strategy Lab;
-- persistence, notes, source health and player-level gap analysis;
-- persistent local source cache with TTL and stale-if-error fallback;
-- central source registry with priority, criticality, fields and freshness policy;
-- smart refresh plan driven by actual coverage rather than blind refetching.
+A shared UI design system (`src/fanta_lab/ui.py`) keeps headers, metrics, tables, empty states and sidebar status consistent across the application. The previous duplicate Copilot page was removed so there is one authoritative live-auction interface: **Command Center**.
+
+## Independent valuation
+
+The independent model is deliberately isolated from FVM/quotation/auction prices. Sporting score is built first from expected fantasy points, minutes/availability, expected production, replacement scarcity, context and data confidence. Market information is attached afterwards only to calculate disagreement/edge.
+
+The ranking is league-specific. Changing clean-sheet points, goals conceded, cards, penalty rules, roster slots, budget or defence modifier changes projected points, replacement levels, fair prices and the recommended target squad.
+
+The defence modifier is treated as a portfolio property of the fieldable goalkeeper/defender unit rather than as a fake fixed individual bonus.
+
+## Auction engine
+
+The live engine combines:
+
+- independent fair value;
+- remaining budget and mandatory reserve;
+- remaining roster slots;
+- role supply and replacement level;
+- room liquidity;
+- overall and role-specific inflation;
+- opponent aggression learned from observed purchases;
+- public aggregate auction-price priors when available;
+- Monte Carlo clearing-price simulations;
+- self-calibration from predicted versus realised prices;
+- target-plan fragility and remaining same-tier alternatives.
+
+Therefore MAX BID is not a static ceiling. It can rise above model fair value when waiting has a measurable whole-roster opportunity cost, while remaining constrained by the ability to complete the squad.
 
 ## Real-data sources wired into the engine
 
-- **football-data.org** — current Serie A teams and squads; roster authority. Free token. Roster calls are cached for 6 hours to protect the free quota.
-- **Fantacalcio.it / user Listone** — fantasy role, quotation and FVM; market layer.
+- **football-data.org** — current Serie A teams and squads; roster authority. Free token.
+- **Fantacalcio.it / user Listone** — role, quotation and FVM; market layer.
+- **Kickest public Serie A statistics** — detailed player production such as appearances, starts, minutes, goals, shots, shots on target, penalties, assists, key passes, discipline, recoveries, tackles, clean sheets and saves when publicly exposed.
 - **Understat** — historical minutes, goals, assists, shots, key passes, xG, xA, npxG, xGChain and xGBuildup.
-- **fantacalcio.dev** — public multi-season fantasy history: fantamedia, average vote, goals, assists and appearances.
-- **football-data.co.uk** — free historical Serie A/Serie B match CSVs used for team attack/defence context.
-- **ClubElo** — current/historical club Elo strength.
-- **OpenFootball Italy** — CC0 Serie A 2026/27 schedule/results; upcoming opponents are combined with club strength into a bounded schedule factor.
-- **Fantacalcio-Online** — historical fantasy/stat cross-check and separate real-auction aggregate price prior.
-- **API-Football / API-Sports** — optional free key: detailed individual stats plus current injury/suspension feed when coverage is enabled.
-- **Big Balls Sports Data** — optional free key: big-five xG history, especially useful for new arrivals from abroad.
+- **fantacalcio.dev** — multi-season fantasy history: fantamedia, average vote, goals, assists and appearances.
+- **football-data.co.uk** — historical Serie A/Serie B match CSVs used for team attack/defence context.
+- **ClubElo** — current/historical club strength.
+- **OpenFootball Italy** — CC0 schedule/results and upcoming-opponent context.
+- **Fantacalcio-Online** — historical fantasy/stat cross-check and aggregate real-auction price prior.
+- **StatsBomb Open Data** — historical event-level training/calibration where open competitions are available; not treated as current Serie A coverage.
+- **API-Football / API-Sports** — optional free key for detailed individual stats and injury/suspension feeds where coverage permits.
+- **Big Balls Sports Data** — optional free key for big-five xG history, especially useful for newcomers from abroad.
 
-API keys can be passed in the UI, Streamlit secrets, or environment variables. Real secret files and the local data cache are ignored by Git.
+API keys can be supplied via UI, Streamlit secrets or environment variables. Secret files and the local cache are ignored by Git.
 
 ```bash
 export FOOTBALL_DATA_TOKEN='...'
@@ -42,27 +66,11 @@ export API_FOOTBALL_TOKEN='...'
 export BIGBALLS_TOKEN='...'
 ```
 
-## Gap Analyzer
+## Data quality and refresh policy
 
-**Gap Analyzer** measures, player by player, missing identity/roster, fantasy market, minutes, production, xG/xA, discipline, vote history, team context, availability and set pieces. It produces `gap_count`, `gap_severity`, `missing_layers` and a recommended next source.
+Roster authority and enrichment remain separate. Optional sources fail softly and are logged; a broken enrichment never deletes a player. Missing facts are not fabricated and lower `data_confidence`/reliability.
 
-## Source Control
-
-Open **Source Control** from the Streamlit sidebar. The page exposes the central registry and calculates a refresh plan on the current master:
-
-- `required` — critical roster/market layer is below the required coverage;
-- `fill-gaps` — enrichment source is worth querying because too many players are uncovered;
-- `refresh-if-stale` — coverage is already high; update only when the TTL expires.
-
-Default freshness policy is intentionally conservative: roster/FVM about 6h, ClubElo/calendar 12h, auction/fantasy cross-check 24h, historical xG/fantasy layers 7 days.
-
-## Cache behavior
-
-Rate-limited or fragile sources can be cached under `.cache/fanta_lab/`, which is never committed. A fresh cache avoids repeated calls. If an upstream source is temporarily down after the TTL expires, the loader may use the last cached copy as an explicitly stale fallback instead of destroying an otherwise usable auction dataset.
-
-## Provenance and failure policy
-
-Roster authority and enrichment remain separate. Optional sources fail softly and are logged; a broken enrichment never deletes a player. Missing facts are not fabricated. Priors are explicitly treated as priors and lower `data_confidence`/reliability.
+**Gap Analyzer** measures missing layers player by player. **Source Control** maps those gaps to source priority and freshness policy. Rate-limited or fragile responses can be cached under `.cache/fanta_lab/`; stale fallback is explicit rather than silently presented as fresh data.
 
 No public downloadable corpus of millions of raw Italian fantasy-auction transactions is assumed. Auction behaviour is therefore learned from public aggregate real-auction prices, the current room's observed sales, self-calibration and simulated heterogeneous bidders.
 
@@ -75,7 +83,7 @@ pip install -r requirements.txt
 streamlit run app.py
 ```
 
-Use **Data Sources** to build the master, **Gap Analyzer** to see what is missing, **Source Control** to decide what deserves a refresh, **Player Intelligence** for valuation, **Auction LIVE** during the auction, and **Strategy Lab** for whole-roster BUY-vs-WAIT decisions.
+Recommended workflow: **Data Sources → Formazione consigliata → Ranking giocatori → Command Center**. Use Strategy Lab when a decision requires deeper scenario analysis; Gap Analyzer, Source Control and Health are supporting tools.
 
 ## Tests
 
