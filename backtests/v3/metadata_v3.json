@@ -1,0 +1,239 @@
+{
+  "method": "greedy pre-holdout ablation; 2025/26 final holdout",
+  "feature_families": [
+    "multiseason",
+    "xg_regression",
+    "availability_trend",
+    "vote_stability"
+  ],
+  "metas": {
+    "2019": {
+      "prior_season": "2019-20",
+      "feature_players": 698,
+      "understat_available": false,
+      "dev_players": 698,
+      "understat_players": 0,
+      "role_metrics": [
+        {
+          "role": "A",
+          "n": 81,
+          "model_spearman": 0.5552820290032292,
+          "persistence_spearman": 0.5613492267008199,
+          "top20_overlap": 0.5294117647058824
+        },
+        {
+          "role": "C",
+          "n": 116,
+          "model_spearman": 0.5756418980002325,
+          "persistence_spearman": 0.5849972705707919,
+          "top20_overlap": 0.625
+        },
+        {
+          "role": "D",
+          "n": 137,
+          "model_spearman": 0.44383875558272357,
+          "persistence_spearman": 0.4474837788543679,
+          "top20_overlap": 0.5
+        },
+        {
+          "role": "P",
+          "n": 24,
+          "model_spearman": 0.5274153433512939,
+          "persistence_spearman": 0.5483800955902355,
+          "top20_overlap": 0.4
+        }
+      ],
+      "understat_v3_available": false
+    },
+    "2020": {
+      "prior_season": "2020-21",
+      "feature_players": 621,
+      "understat_available": false,
+      "dev_players": 621,
+      "understat_players": 0,
+      "role_metrics": [
+        {
+          "role": "A",
+          "n": 81,
+          "model_spearman": 0.4674823141578243,
+          "persistence_spearman": 0.4638689242899377,
+          "top20_overlap": 0.35294117647058826
+        },
+        {
+          "role": "C",
+          "n": 112,
+          "model_spearman": 0.4686279338644357,
+          "persistence_spearman": 0.48309812388927537,
+          "top20_overlap": 0.43478260869565216
+        },
+        {
+          "role": "D",
+          "n": 127,
+          "model_spearman": 0.3807964238716149,
+          "persistence_spearman": 0.3838313119024711,
+          "top20_overlap": 0.5769230769230769
+        },
+        {
+          "role": "P",
+          "n": 22,
+          "model_spearman": 0.23658949745906271,
+          "persistence_spearman": 0.27159796725014124,
+          "top20_overlap": 0.2
+        }
+      ],
+      "understat_v3_available": false
+    },
+    "2021": {
+      "prior_season": "2021-22",
+      "feature_players": 652,
+      "understat_available": false,
+      "dev_players": 652,
+      "understat_players": 0,
+      "role_metrics": [
+        {
+          "role": "A",
+          "n": 76,
+          "model_spearman": 0.4087820749429248,
+          "persistence_spearman": 0.40711424626447396,
+          "top20_overlap": 0.4375
+        },
+        {
+          "role": "C",
+          "n": 115,
+          "model_spearman": 0.4368373916243687,
+          "persistence_spearman": 0.4406426568247909,
+          "top20_overlap": 0.5217391304347826
+        },
+        {
+          "role": "D",
+          "n": 126,
+          "model_spearman": 0.4288593986399084,
+          "persistence_spearman": 0.437740444865621,
+          "top20_overlap": 0.34615384615384615
+        },
+        {
+          "role": "P",
+          "n": 25,
+          "model_spearman": 0.3631467657096893,
+          "persistence_spearman": 0.30230769230769233,
+          "top20_overlap": 0.0
+        }
+      ],
+      "understat_v3_available": false
+    },
+    "2022": {
+      "prior_season": "2022-23",
+      "feature_players": 669,
+      "understat_available": false,
+      "dev_players": 669,
+      "understat_players": 0,
+      "role_metrics": [
+        {
+          "role": "A",
+          "n": 75,
+          "model_spearman": 0.2389649923896499,
+          "persistence_spearman": 0.2470678606291645,
+          "top20_overlap": 0.26666666666666666
+        },
+        {
+          "role": "C",
+          "n": 105,
+          "model_spearman": 0.4906341125748462,
+          "persistence_spearman": 0.4958930885836629,
+          "top20_overlap": 0.42857142857142855
+        },
+        {
+          "role": "D",
+          "n": 121,
+          "model_spearman": 0.36605106059993914,
+          "persistence_spearman": 0.3660781574287644,
+          "top20_overlap": 0.4
+        },
+        {
+          "role": "P",
+          "n": 22,
+          "model_spearman": 0.7139226491974183,
+          "persistence_spearman": 0.6969782825234287,
+          "top20_overlap": 0.6
+        }
+      ],
+      "understat_v3_available": false
+    },
+    "2023": {
+      "prior_season": "2023-24",
+      "feature_players": 709,
+      "understat_available": false,
+      "dev_players": 709,
+      "understat_players": 0,
+      "role_metrics": [
+        {
+          "role": "A",
+          "n": 85,
+          "model_spearman": 0.38987042476227146,
+          "persistence_spearman": 0.3904879639386372,
+          "top20_overlap": 0.4117647058823529
+        },
+        {
+          "role": "C",
+          "n": 110,
+          "model_spearman": 0.42887670643924053,
+          "persistence_spearman": 0.4255009321507207,
+          "top20_overlap": 0.4090909090909091
+        },
+        {
+          "role": "D",
+          "n": 120,
+          "model_spearman": 0.306262164663775,
+          "persistence_spearman": 0.3081234341120468,
+          "top20_overlap": 0.4583333333333333
+        },
+        {
+          "role": "P",
+          "n": 24,
+          "model_spearman": 0.5643478260869564,
+          "persistence_spearman": 0.568695652173913,
+          "top20_overlap": 0.4
+        }
+      ],
+      "understat_v3_available": false
+    },
+    "2024": {
+      "prior_season": "2024-25",
+      "feature_players": 1000,
+      "understat_available": false,
+      "dev_players": 1000,
+      "understat_players": 0,
+      "role_metrics": [
+        {
+          "role": "A",
+          "n": 82,
+          "model_spearman": 0.3548650413582934,
+          "persistence_spearman": 0.34688913196601995,
+          "top20_overlap": 0.4117647058823529
+        },
+        {
+          "role": "C",
+          "n": 111,
+          "model_spearman": 0.37264658011206164,
+          "persistence_spearman": 0.36966956695307335,
+          "top20_overlap": 0.391304347826087
+        },
+        {
+          "role": "D",
+          "n": 131,
+          "model_spearman": 0.31468914958191846,
+          "persistence_spearman": 0.30394221415744604,
+          "top20_overlap": 0.4074074074074074
+        },
+        {
+          "role": "P",
+          "n": 27,
+          "model_spearman": 0.5122882062433217,
+          "persistence_spearman": 0.499465736241999,
+          "top20_overlap": 0.5
+        }
+      ],
+      "understat_v3_available": false
+    }
+  }
+}

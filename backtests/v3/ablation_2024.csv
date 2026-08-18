@@ -1,0 +1,3 @@
+step,candidate,gain,objective,accepted
+1,vote_stability,0.002264323614236119,0.490541697109659,True
+2,availability_trend,0.0007322985822053041,0.4912739956918643,False
