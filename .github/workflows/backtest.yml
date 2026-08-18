@@ -1,0 +1,73 @@
+name: historical-backtests
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'src/fanta_lab/backtest.py'
+      - 'src/fanta_lab/projection.py'
+      - 'src/fanta_lab/independent_model.py'
+      - 'src/fanta_lab/sources/fantacalcio_dev.py'
+      - 'src/fanta_lab/sources/understat.py'
+      - 'requirements.txt'
+      - '.github/workflows/backtest.yml'
+
+jobs:
+  backtest:
+    strategy:
+      fail-fast: false
+      max-parallel: 2
+      matrix:
+        prior_year: [2019, 2020, 2021, 2022, 2023, 2024]
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+      - run: pip install -r requirements.txt
+      - name: Run leak-free backtest ${{ matrix.prior_year }}
+        env:
+          PYTHONPATH: .
+        run: python -m src.fanta_lab.backtest --prior-year ${{ matrix.prior_year }} --out-dir artifacts/backtest-${{ matrix.prior_year }}
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: backtest-${{ matrix.prior_year }}
+          path: artifacts/backtest-${{ matrix.prior_year }}
+          if-no-files-found: warn
+
+  aggregate:
+    if: always()
+    needs: backtest
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install -r requirements.txt
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: backtest-*
+          path: artifacts/downloaded
+      - name: Aggregate completed seasons
+        env:
+          PYTHONPATH: .
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          from src.fanta_lab.backtest import aggregate_backtests
+          root=Path('artifacts/downloaded')
+          summaries=list(root.rglob('summary.csv'))
+          if not summaries:
+              raise SystemExit('No completed backtest summaries found')
+          df=aggregate_backtests(root,'artifacts/aggregate')
+          print(df.to_string(index=False))
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: backtest-aggregate
+          path: artifacts/aggregate
