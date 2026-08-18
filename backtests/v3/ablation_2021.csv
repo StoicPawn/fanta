@@ -1,2 +1,3 @@
 step,candidate,gain,objective,accepted
-1,xg_regression,0.0,0.5435321974172911,False
+1,xg_regression,0.0033565603260233834,0.5393211008887776,True
+2,multiseason,0.0005719913197476112,0.5398930922085252,False
