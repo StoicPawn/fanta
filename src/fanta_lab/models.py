@@ -25,11 +25,26 @@ class LeagueRules:
     red: float = -1.0
     defense_modifier: bool = False
     defense_modifier_strength: float = 1.0
+    # Common configurable modifier bands. Expected bonus is computed at defensive-unit level.
+    modifier_threshold_1: float = 6.00
+    modifier_bonus_1: float = 1.0
+    modifier_threshold_2: float = 6.25
+    modifier_bonus_2: float = 3.0
+    modifier_threshold_3: float = 6.50
+    modifier_bonus_3: float = 6.0
+    modifier_defenders_required: int = 4
     base_vote_weight: float = 1.0
     min_bid: int = 1
 
     def slots(self) -> Dict[str, int]:
         return {"P": self.slots_gk, "D": self.slots_def, "C": self.slots_mid, "A": self.slots_fwd}
+
+    def modifier_bands(self):
+        return sorted([
+            (float(self.modifier_threshold_1), float(self.modifier_bonus_1)),
+            (float(self.modifier_threshold_2), float(self.modifier_bonus_2)),
+            (float(self.modifier_threshold_3), float(self.modifier_bonus_3)),
+        ])
 
     def to_dict(self):
         return asdict(self)
