@@ -9,4 +9,4 @@ jobs:
         with: {python-version: '3.12'}
       - run: pip install -r requirements.txt pytest
       - run: python -m compileall -q app.py src pages
-      - run: PYTHONPATH=. pytest -q
+      - run: PYTHONPATH=src pytest -q
