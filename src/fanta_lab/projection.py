@@ -17,9 +17,15 @@ def _external_rate(row,col):
     m=_num(row,'external_minutes',0); return _num(row,'external_'+col,0)*90/max(90,m) if m>0 else np.nan
 
 def estimate_minutes(row:pd.Series)->tuple[float,float,str]:
+    """Estimate season minutes without fantasy-market information.
+
+    FVM/quotation are intentionally excluded.  The independent model can use observed
+    football history, foreign history, explicit starting probability and availability;
+    when none exist it falls back to a conservative role prior with low confidence.
+    """
     if pd.notna(row.get('projected_minutes',np.nan)):
         pm=float(row['projected_minutes']); return float(np.clip(pm,0,3420)),.95,'manual'
-    hist=_num(row,'minutes'); ext=_num(row,'external_minutes'); fvm=_num(row,'fvm_1000',np.nan); q=_num(row,'quotation',np.nan); start_prob=_num(row,'starting_probability',np.nan)
+    hist=_num(row,'minutes'); ext=_num(row,'external_minutes'); start_prob=_num(row,'starting_probability',np.nan)
     explicit_injury=row.get('injury_risk',np.nan)
     if pd.notna(explicit_injury):injury_risk=float(np.clip(_num(row,'injury_risk',0),0,.95)); injury_src='injury_risk'
     elif bool(row.get('currently_injured',False)):injury_risk=.45; injury_src='current_injury_flag'
@@ -29,8 +35,7 @@ def estimate_minutes(row:pd.Series)->tuple[float,float,str]:
         prior=np.clip(hist*.94,450,3200)
         if not np.isnan(start_prob):prior=.65*prior+.35*(3420*np.clip(start_prob,0,1))
         prior*=availability; conf=min(.92,.45+hist/5000)
-        if not np.isnan(fvm):prior=np.clip(prior*(.92+.16*min(1,fvm/250)),300,3300)
-        src='history+market' if not np.isnan(fvm) else 'history'
+        src='history'
         if not np.isnan(start_prob):src+='+starting_probability'
         if injury_src:src+='+'+injury_src
         return float(prior),float(conf),src
@@ -38,9 +43,18 @@ def estimate_minutes(row:pd.Series)->tuple[float,float,str]:
         league_factor=float(np.clip(_num(row,'external_league_factor',.88),.55,1.15)); prior=np.clip(ext*.92*league_factor,350,3000)*availability
         if not np.isnan(start_prob):prior=.60*prior+.40*(3420*np.clip(start_prob,0,1))
         return float(prior),float(min(.72,.35+ext/6500)),'external_history'+('+'+injury_src if injury_src else '')
-    market=fvm if not np.isnan(fvm) else (q*8 if not np.isnan(q) else 20); pm=(500+min(2200,max(0,market)*6.2))*availability
-    if not np.isnan(start_prob):pm=.50*pm+.50*(3420*np.clip(start_prob,0,1))
-    return float(np.clip(pm,250,2850)),.30,'market_prior_no_history'+('+'+injury_src if injury_src else '')
+    role=str(row.get('role','C')).upper()
+    role_prior={'P':1650.0,'D':1450.0,'C':1450.0,'A':1350.0}.get(role,1400.0)
+    pm=role_prior*availability
+    if not np.isnan(start_prob):
+        pm=.35*pm+.65*(3420*np.clip(start_prob,0,1))*availability
+        conf=.38
+        src='starting_probability_prior'
+    else:
+        conf=.22
+        src='role_prior_no_history'
+    if injury_src:src+='+'+injury_src
+    return float(np.clip(pm,250,2850)),conf,src
 
 def project_player(row:pd.Series,rules:LeagueRules)->dict:
     role=str(row.get('role','C')).upper(); pm,min_conf,min_src=estimate_minutes(row); apps90=pm/90; hist=_num(row,'minutes'); ext=_num(row,'external_minutes')
@@ -62,8 +76,6 @@ def project_player(row:pd.Series,rules:LeagueRules)->dict:
     if role=='P':
         gc90=_num(row,'goals_conceded_per90',1.25)/defense_strength; conceded_pts=gc90*apps90*rules.goal_conceded_gk; saved_pen_pts=safe_rate(row,'penalties_faced')*apps90*np.clip(_num(row,'penalty_save_rate',.18),0,1)*rules.penalty_saved
     penalty_miss_pts=safe_rate(row,'penalties_missed')*apps90*rules.penalty_missed
-    # Defence modifier is deliberately NOT assigned as an individual point bonus here.
-    # It is evaluated on the selected P+D unit by target_engine.expected_defence_modifier.
     modifier=0.0
     total=vote_points+goal_pts+assist_pts+card_pts+own_goal_pts+clean_pts+conceded_pts+saved_pen_pts+penalty_miss_pts
     data_conf=_num(row,'data_confidence',.35); reliability=float(np.clip(.55*min_conf+.45*data_conf,0,1)); uncertainty=max(6.0,abs(total)*(.08+.28*(1-reliability))); p10=total-1.2816*uncertainty; p90=total+1.2816*uncertainty
