@@ -30,8 +30,8 @@ jobs:
       - run: pip install -r requirements.txt
       - name: Run leak-free backtest ${{ matrix.prior_year }}
         env:
-          PYTHONPATH: .
-        run: python -m src.fanta_lab.backtest --prior-year ${{ matrix.prior_year }} --out-dir artifacts/backtest-${{ matrix.prior_year }}
+          PYTHONPATH: src
+        run: python -m fanta_lab.backtest --prior-year ${{ matrix.prior_year }} --out-dir artifacts/backtest-${{ matrix.prior_year }}
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -55,11 +55,11 @@ jobs:
           path: artifacts/downloaded
       - name: Aggregate completed seasons
         env:
-          PYTHONPATH: .
+          PYTHONPATH: src
         run: |
           python - <<'PY'
           from pathlib import Path
-          from src.fanta_lab.backtest import aggregate_backtests
+          from fanta_lab.backtest import aggregate_backtests
           root=Path('artifacts/downloaded')
           summaries=list(root.rglob('summary.csv'))
           if not summaries:
