@@ -26,15 +26,20 @@ def _attach_previous_season(frame: pd.DataFrame, prior_year: int) -> pd.DataFram
         return frame.copy()
     prev=load_historical_outcomes(prior_year-1).copy()
     prev['_name_key']=prev.player.map(_norm_name)
-    keep=['_name_key','actual_fantamedia','actual_avg_vote','actual_appearances','actual_goals','actual_assists','actual_total_proxy']
+    prev=prev.rename(columns={
+        'actual_fantamedia':'prev_fantamedia',
+        'actual_avg_vote':'prev_avg_vote',
+        'actual_appearances':'prev_appearances',
+        'actual_goals':'prev_goals',
+        'actual_assists':'prev_assists',
+        'actual_total_proxy':'prev_total_proxy',
+    })
+    keep=['_name_key','prev_fantamedia','prev_avg_vote','prev_appearances','prev_goals','prev_assists','prev_total_proxy']
     prev=prev[keep].drop_duplicates('_name_key')
     out=frame.copy(); out['_name_key']=out.player.map(_norm_name)
-    out=out.merge(prev,on='_name_key',how='left',suffixes=('','_prev'))
-    ren={
-        'actual_fantamedia':'prev_fantamedia','actual_avg_vote':'prev_avg_vote','actual_appearances':'prev_appearances',
-        'actual_goals':'prev_goals','actual_assists':'prev_assists','actual_total_proxy':'prev_total_proxy'
-    }
-    return out.rename(columns=ren)
+    # Previous-season columns are renamed before the merge so the current target
+    # columns (actual_*) remain untouched for evaluation.
+    return out.merge(prev,on='_name_key',how='left')
 
 
 def _attach_understat_diagnostics(frame: pd.DataFrame, prior_year: int) -> tuple[pd.DataFrame,bool]:
@@ -59,7 +64,6 @@ def build_feature_frame(prior_year:int,rules:LeagueRules|None=None)->tuple[pd.Da
     df,us_ok=_attach_understat_diagnostics(df,prior_year)
     meta=dict(meta); meta['understat_v3_available']=us_ok
 
-    # leak-free feature diagnostics: current prior-season information vs season before that.
     cur_total=pd.to_numeric(df.get('prior_total_proxy'),errors='coerce')
     prev_total=pd.to_numeric(df.get('prev_total_proxy'),errors='coerce')
     cur_apps=pd.to_numeric(df.get('prior_appearances'),errors='coerce')
@@ -76,7 +80,6 @@ def build_feature_frame(prior_year:int,rules:LeagueRules|None=None)->tuple[pd.Da
     xa=pd.to_numeric(df.get('xa'),errors='coerce')
     assists=pd.to_numeric(df.get('assists'),errors='coerce')
     mins=pd.to_numeric(df.get('minutes'),errors='coerce').replace(0,np.nan)
-    # Positive residual means underlying production exceeds realised production and may regress upward.
     xg_resid=((xg-goals).fillna(0) + .65*(xa-assists).fillna(0)) * (90/mins).clip(upper=.2).fillna(0)
     df['xg_regression_signal']=_z_by_role(df,xg_resid)
     return df,meta
