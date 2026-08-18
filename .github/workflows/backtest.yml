@@ -35,7 +35,11 @@ jobs:
       - name: Run leak-free backtest ${{ matrix.prior_year }}
         env:
           PYTHONPATH: src
-        run: python -m fanta_lab.backtest --prior-year ${{ matrix.prior_year }} --out-dir artifacts/backtest-${{ matrix.prior_year }}
+        shell: bash
+        run: |
+          mkdir -p artifacts/backtest-${{ matrix.prior_year }}
+          set -o pipefail
+          python -m fanta_lab.backtest --prior-year ${{ matrix.prior_year }} --out-dir artifacts/backtest-${{ matrix.prior_year }} 2>&1 | tee artifacts/backtest-${{ matrix.prior_year }}/run.log
       - uses: actions/upload-artifact@v4
         if: always()
         with:
