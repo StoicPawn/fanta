@@ -1,0 +1,60 @@
+name: ablation-v3
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'src/fanta_lab/backtest.py'
+      - 'src/fanta_lab/backtest_v3.py'
+      - 'src/fanta_lab/projection.py'
+      - 'src/fanta_lab/independent_model.py'
+      - 'src/fanta_lab/sources/understat.py'
+      - 'src/fanta_lab/sources/fantacalcio_dev.py'
+      - 'tests/test_backtest_v3.py'
+      - '.github/workflows/backtest_v3.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  ablation:
+    runs-on: ubuntu-latest
+    timeout-minutes: 55
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+      - run: pip install -r requirements.txt
+      - name: Unit tests V3
+        env:
+          PYTHONPATH: src
+        run: pytest -q tests/test_backtest_v3.py tests/test_backtest.py tests/test_independent_model.py
+      - name: Run V3 feature ablation
+        env:
+          PYTHONPATH: src
+        run: |
+          mkdir -p artifacts/backtest-v3
+          python -m fanta_lab.backtest_v3 --out-dir artifacts/backtest-v3 2>&1 | tee artifacts/backtest-v3/run.log
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: backtest-v3
+          path: artifacts/backtest-v3
+          if-no-files-found: warn
+      - name: Persist V3 evidence
+        if: success()
+        run: |
+          mkdir -p backtests/v3
+          cp artifacts/backtest-v3/summary_v3.csv backtests/v3/summary_v3.csv
+          cp artifacts/backtest-v3/report_v3.md backtests/v3/report_v3.md
+          cp artifacts/backtest-v3/metadata_v3.json backtests/v3/metadata_v3.json
+          cp artifacts/backtest-v3/ablation_*.csv backtests/v3/ || true
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add backtests/v3
+          git diff --cached --quiet || git commit -m 'chore(backtest): persist V3 ablation evidence'
+          git pull --rebase origin main
+          git push origin main
