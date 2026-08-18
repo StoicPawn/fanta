@@ -31,29 +31,17 @@ def _shrink_rate(events: pd.Series, minutes: pd.Series, role: pd.Series, prior: 
 
 
 def build_independent_valuation(df: pd.DataFrame, rules: LeagueRules) -> pd.DataFrame:
-    """Independent valuation V1.
-
-    No FVM/quotation/auction-price field is used to construct the sporting score.
-    Market fields are only attached afterwards for comparison.  The model combines
-    rule-specific projected fantasy points, replacement value, expected production,
-    availability, team/schedule context and uncertainty.
-    """
+    """Independent valuation V1, fully rule-aware and market-isolated."""
     out = add_projections(df.copy(), rules)
     role = out['role'].astype(str).str.upper()
     mins = _num(out, 'minutes', 0).fillna(0)
 
-    # Bayesian-shrunk underlying production: resistant to one-season finishing luck.
-    xg = _num(out, 'xg', np.nan)
-    xa = _num(out, 'xa', np.nan)
-    goals = _num(out, 'goals', 0)
-    assists = _num(out, 'assists', 0)
-    goal_signal = xg.where(xg.notna(), goals)
-    assist_signal = xa.where(xa.notna(), assists)
+    xg = _num(out, 'xg', np.nan); xa = _num(out, 'xa', np.nan)
+    goals = _num(out, 'goals', 0); assists = _num(out, 'assists', 0)
+    goal_signal = xg.where(xg.notna(), goals); assist_signal = xa.where(xa.notna(), assists)
     out['model_xg90'] = _shrink_rate(goal_signal, mins, role, {'P':0.0,'D':.045,'C':.12,'A':.30})
     out['model_xa90'] = _shrink_rate(assist_signal, mins, role, {'P':0.0,'D':.045,'C':.11,'A':.11})
 
-    # Replacement is league-specific: enough players to fill every roster, plus a
-    # small safety buffer.  Value above replacement is what scarce auction budget buys.
     total_slots = {r: rules.slots()[r] * rules.managers for r in rules.slots()}
     replacement = {}
     for r, n in total_slots.items():
@@ -63,36 +51,41 @@ def build_independent_valuation(df: pd.DataFrame, rules: LeagueRules) -> pd.Data
     out['replacement_points'] = role.map(replacement).fillna(0)
     out['vorp'] = (pd.to_numeric(out['independent_points'], errors='coerce') - out['replacement_points']).clip(lower=0)
 
-    # Orthogonal components, all independent from fantasy market prices.
     out['production_component'] = .62*_role_percentile(out, 'independent_points') + .23*_role_percentile(out, 'model_xg90') + .15*_role_percentile(out, 'model_xa90')
-    out['availability_component'] = (.65*_role_percentile(out, 'projected_minutes') + .35*_num(out, 'minutes_confidence', .35).fillna(.35).clip(0,1))
-    team_attack = _num(out, 'team_context_factor', 1).fillna(1)
-    team_def = _num(out, 'team_defense_factor', 1).fillna(1)
-    sched = _num(out, 'schedule_factor_used', 1).fillna(1)
+    out['availability_component'] = .65*_role_percentile(out, 'projected_minutes') + .35*_num(out, 'minutes_confidence', .35).fillna(.35).clip(0,1)
+    team_attack = _num(out, 'team_context_factor', 1).fillna(1); team_def = _num(out, 'team_defense_factor', 1).fillna(1); sched = _num(out, 'schedule_factor_used', 1).fillna(1)
     team_raw = np.where(role.isin(['P','D']), .70*team_def+.30*sched, .70*team_attack+.30*sched)
     out['context_component'] = pd.Series(team_raw,index=out.index).groupby(role).rank(pct=True).fillna(.5)
     out['scarcity_component'] = _role_percentile(out, 'vorp')
     out['certainty_component'] = _num(out, 'reliability', .35).fillna(.35).clip(0,1)
 
+    # Modifier readiness affects ranking only when the league actually enables it.
+    # This is a selection-quality signal; actual modifier points remain portfolio-level.
+    avg_vote=_num(out,'avg_vote',6.0).fillna(6.0)
+    mod_base=(avg_vote-5.6).clip(lower=0) * (.55+.45*out['certainty_component']) * (_num(out,'projected_minutes',0).fillna(0)/3420).clip(0,1)
+    out['modifier_readiness']=mod_base.groupby(role).rank(pct=True).fillna(.5)
+    mod_active=role.isin(['P','D']) & bool(rules.defense_modifier)
+
     raw = (0.48*out['production_component'] + 0.18*out['availability_component'] +
            0.14*out['scarcity_component'] + 0.08*out['context_component'] +
            0.12*out['certainty_component'])
-    # Confidence shrinkage prevents poorly observed newcomers from looking certain.
+    if rules.defense_modifier:
+        # Reweight P/D toward reliable average-vote profiles without inventing an individual bonus.
+        raw = raw.where(~mod_active, .88*raw + .12*out['modifier_readiness'])
+
     conf = out['certainty_component']
     out['independent_score_v1'] = (100*(.50 + (raw-.50)*(.55+.45*conf))).clip(0,100)
     out['independent_score_floor'] = (out['independent_score_v1'] - 18*(1-conf)).clip(0,100)
     out['independent_score_ceiling'] = (out['independent_score_v1'] + 18*(1-conf)).clip(0,100)
 
-    # Allocate the league's discretionary auction budget only on positive VORP.
-    min_spend = rules.min_bid * sum(rules.slots().values())
-    discretionary_per_manager = max(0, rules.budget-min_spend)
-    pool_budget = discretionary_per_manager * rules.managers
-    weights = out['vorp'].pow(1.18) * (.70+.30*conf)
-    denom = float(weights.sum())
-    out['independent_fair_price'] = rules.min_bid + (pool_budget*weights/denom if denom>0 else 0)
+    min_spend = rules.min_bid * sum(rules.slots().values()); discretionary_per_manager = max(0, rules.budget-min_spend); pool_budget = discretionary_per_manager * rules.managers
+    value_weight = out['vorp'].pow(1.18) * (.70+.30*conf)
+    if rules.defense_modifier:
+        value_weight = value_weight * np.where(mod_active, .90+.20*out['modifier_readiness'], 1.0)
+    denom = float(value_weight.sum())
+    out['independent_fair_price'] = rules.min_bid + (pool_budget*value_weight/denom if denom>0 else 0)
     out['independent_fair_price'] = out['independent_fair_price'].clip(lower=rules.min_bid)
 
-    # Market comparison is deliberately downstream and cannot leak into the model.
     if 'fvm_1000' in out:
         market = _num(out, 'fvm_1000') * rules.budget / 1000.0
         out['market_price_from_fvm'] = market
