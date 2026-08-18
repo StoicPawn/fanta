@@ -23,35 +23,94 @@ jobs:
     timeout-minutes: 55
     steps:
       - uses: actions/checkout@v4
+
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
           cache: pip
-      - run: pip install -r requirements.txt
-      - name: Unit tests V3
-        env:
-          PYTHONPATH: src
-        run: pytest -q tests/test_backtest_v3.py tests/test_backtest.py tests/test_independent_model.py
-      - name: Run V3 feature ablation
-        env:
-          PYTHONPATH: src
+
+      - name: Prepare diagnostics
         run: |
           mkdir -p artifacts/backtest-v3
-          python -m fanta_lab.backtest_v3 --out-dir artifacts/backtest-v3 2>&1 | tee artifacts/backtest-v3/run.log
+          echo "run_id=${GITHUB_RUN_ID}" > artifacts/backtest-v3/status.txt
+          echo "run_attempt=${GITHUB_RUN_ATTEMPT}" >> artifacts/backtest-v3/status.txt
+          echo "sha=${GITHUB_SHA}" >> artifacts/backtest-v3/status.txt
+          python --version 2>&1 | tee artifacts/backtest-v3/python-version.log
+
+      - name: Install dependencies
+        id: deps
+        shell: bash
+        run: |
+          set -o pipefail
+          pip install -r requirements.txt 2>&1 | tee artifacts/backtest-v3/install.log
+
+      - name: Unit tests V3
+        id: tests
+        env:
+          PYTHONPATH: src
+        shell: bash
+        run: |
+          set -o pipefail
+          pytest -q tests/test_backtest_v3.py tests/test_backtest.py tests/test_independent_model.py 2>&1 | tee artifacts/backtest-v3/tests.log
+
+      - name: Run V3 feature ablation
+        id: ablation
+        env:
+          PYTHONPATH: src
+          PYTHONFAULTHANDLER: '1'
+        shell: bash
+        run: |
+          set -o pipefail
+          python -X faulthandler -m fanta_lab.backtest_v3 --out-dir artifacts/backtest-v3 2>&1 | tee artifacts/backtest-v3/run.log
+
+      - name: Record final step state
+        if: always()
+        shell: bash
+        run: |
+          {
+            echo "deps=${{ steps.deps.outcome }}"
+            echo "tests=${{ steps.tests.outcome }}"
+            echo "ablation=${{ steps.ablation.outcome }}"
+            echo "job=${{ job.status }}"
+            echo "finished_utc=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          } >> artifacts/backtest-v3/status.txt
+          find artifacts/backtest-v3 -maxdepth 1 -type f -printf '%f %s bytes\n' | sort > artifacts/backtest-v3/files.txt
+
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: backtest-v3
+          name: backtest-v3-${{ github.run_id }}-${{ github.run_attempt }}
           path: artifacts/backtest-v3
-          if-no-files-found: warn
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Persist V3 failure diagnostics
+        if: failure()
+        shell: bash
+        run: |
+          mkdir -p backtests/v3/failure
+          cp artifacts/backtest-v3/status.txt backtests/v3/failure/status.txt || true
+          cp artifacts/backtest-v3/tests.log backtests/v3/failure/tests.log || true
+          cp artifacts/backtest-v3/run.log backtests/v3/failure/run.log || true
+          cp artifacts/backtest-v3/install.log backtests/v3/failure/install.log || true
+          cp artifacts/backtest-v3/files.txt backtests/v3/failure/files.txt || true
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add backtests/v3/failure
+          git diff --cached --quiet || git commit -m 'chore(backtest): persist V3 failure diagnostics'
+          git pull --rebase origin main
+          git push origin main
+
       - name: Persist V3 evidence
         if: success()
+        shell: bash
         run: |
           mkdir -p backtests/v3
           cp artifacts/backtest-v3/summary_v3.csv backtests/v3/summary_v3.csv
           cp artifacts/backtest-v3/report_v3.md backtests/v3/report_v3.md
           cp artifacts/backtest-v3/metadata_v3.json backtests/v3/metadata_v3.json
           cp artifacts/backtest-v3/ablation_*.csv backtests/v3/ || true
+          rm -rf backtests/v3/failure
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add backtests/v3
