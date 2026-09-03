@@ -7,7 +7,7 @@ from src.fanta_lab.models import LeagueRules, AuctionPurchase
 from src.fanta_lab.independent_model import build_independent_valuation
 from src.fanta_lab.auction import AuctionState
 from src.fanta_lab.target_engine import build_target_plan, expected_defence_modifier
-from src.fanta_lab.plan_health import plan_health, role_spend_corridors
+from src.fanta_lab.plan_health import plan_resilience, role_risk_summary, role_spend_envelopes
 from src.fanta_lab.ui import apply_theme, page_header, section, common_sidebar, empty_state
 
 st.set_page_config(page_title='Formazione consigliata · Fanta Auction Lab', page_icon='🧩', layout='wide')
@@ -41,7 +41,12 @@ if plan.squad.empty:
     st.error('Non esiste al momento una rosa completa fattibile. Verifica budget, slot e prezzi stimati.')
     st.stop()
 
-health=plan_health(pool,plan,state,r); corridors=role_spend_corridors(plan,state,r)
+# plan_health.py espone la nuova API a componenti: resilienza per giocatore,
+# sintesi del rischio per ruolo e corridoi di spesa. La pagina usa direttamente
+# questi nomi per evitare dipendenze da alias rimossi durante il refactoring.
+resilience=plan_resilience(pool,plan,sold_players=sold)
+health=role_risk_summary(resilience,plan)
+corridors=role_spend_envelopes(plan,r,remaining_budget=state.remaining(me))
 frag=float(health['risk_score'].max()) if len(health) else 0
 k=st.columns(6)
 k[0].metric('Budget residuo',f'{state.remaining(me):.0f}')
@@ -83,3 +88,9 @@ with health_tab:
         worst=health.sort_values('risk_score',ascending=False).iloc[0]
         if float(worst.risk_score)>=.55: st.warning(f"Priorità attuale: **{worst.get('role','')}** · il piano ha poche alternative equivalenti.")
         else: st.success('Il piano corrente ha una buona profondità di alternative.')
+    if len(resilience):
+        st.markdown('**Dettaglio target per target**')
+        st.dataframe(resilience,use_container_width=True,hide_index=True,column_config={
+            'player':'Giocatore','role':'R','alternatives':'Alternative equivalenti','fragility':'Fragilità',
+            'target_points':st.column_config.NumberColumn('Punti target',format='%.1f'),
+            'target_price':st.column_config.NumberColumn('Prezzo target',format='%.0f')})
