@@ -59,23 +59,27 @@ class FantacalcioPublicSource:
 
     @staticmethod
     def normalize(df:pd.DataFrame)->pd.DataFrame:
-        cols=list(map(str,df.columns)); low={c:c.lower() for c in cols}
-        def find_any(parts):
-            for c in cols:
-                if any(p in low[c] for p in parts): return c
-        pcol=find_any(['calciatore','player','nome']); tcol=find_any(['squadra',' team',' sq'])
-        rcols=[c for c in cols if 'ruolo' in low[c] or low[c].strip() in {'r','rm'}]
-        fcols=[c for c in cols if 'fvm' in low[c]]
-        qacols=[c for c in cols if re.search(r'(^|\s)qa($|\s)',low[c])]
-        qicols=[c for c in cols if re.search(r'(^|\s)qi($|\s)',low[c])]
+        cols=list(df.columns)
+        normalized={c:re.sub(r'[^a-z0-9]+','',str(c).strip().lower()) for c in cols}
+        def find_exact(*names):
+            wanted={re.sub(r'[^a-z0-9]+','',name.lower()) for name in names}
+            return next((c for c in cols if normalized[c] in wanted),None)
+        def find_contains(*parts):
+            return next((c for c in cols if any(part in normalized[c] for part in parts)),None)
+        pcol=find_exact('calciatore','player','nome') or find_contains('calciatore','player')
+        tcol=find_exact('squadra','team','sq')
+        role_col=find_exact('r','ruolo','role')
+        fvm_col=find_exact('fvm','fvm classic','fvmclassic') or find_contains('fvm')
+        qa_col=find_exact('qa','qt.a','quotazione attuale','quotazione corrente','current quotation')
+        qi_col=find_exact('qi','qt.i','quotazione iniziale','initial quotation')
         if not pcol: raise RuntimeError('Colonna calciatore non trovata.')
         out=pd.DataFrame({'player':df[pcol].astype(str).str.strip()})
         if tcol: out['team_fanta']=df[tcol].astype(str).str.strip()
-        if rcols: out['role_fanta']=df[rcols[0]].astype(str).str.strip().str[0].str.upper()
-        if qicols: out['quotation_initial']=pd.to_numeric(df[qicols[0]],errors='coerce')
-        if qacols: out['quotation']=pd.to_numeric(df[qacols[0]],errors='coerce')
-        elif qicols: out['quotation']=pd.to_numeric(df[qicols[0]],errors='coerce')
-        if fcols: out['fvm_1000']=pd.to_numeric(df[fcols[0]],errors='coerce')
+        if role_col: out['role_fanta']=df[role_col].astype(str).str.strip().str[0].str.upper()
+        if qi_col: out['quotation_initial']=pd.to_numeric(df[qi_col],errors='coerce')
+        if qa_col: out['quotation']=pd.to_numeric(df[qa_col],errors='coerce')
+        elif qi_col: out['quotation']=pd.to_numeric(df[qi_col],errors='coerce')
+        if fvm_col: out['fvm_1000']=pd.to_numeric(df[fvm_col],errors='coerce')
         out['source_fanta']='fantacalcio.it-public'; out['fantasy_eligible']=True
         return out[out.player.ne('nan') & out.player.ne('')].drop_duplicates(['player','team_fanta'] if 'team_fanta' in out else ['player'])
 
@@ -136,6 +140,21 @@ class FantacalcioCurrentStatsSource:
 
 def load_user_list(path_or_file)->pd.DataFrame:
     name=getattr(path_or_file,'name',str(path_or_file)).lower()
-    df=pd.read_excel(path_or_file) if name.endswith(('.xlsx','.xls')) else pd.read_csv(path_or_file)
+    if name.endswith('.xlsx'):
+        workbook=pd.ExcelFile(path_or_file)
+        sheet=next((s for s in workbook.sheet_names if str(s).strip().lower()=='tutti'),workbook.sheet_names[0])
+        preview=pd.read_excel(workbook,sheet_name=sheet,header=None,nrows=25)
+        header_row=None
+        for index,row in preview.iterrows():
+            labels={re.sub(r'[^a-z0-9]+','',str(value).strip().lower()) for value in row if pd.notna(value)}
+            if labels.intersection({'nome','calciatore','player'}) and labels.intersection({'squadra','team','sq'}):
+                header_row=int(index); break
+        if header_row is None:
+            raise RuntimeError('Intestazione del Listone Excel non riconosciuta: servono almeno Nome/Calciatore e Squadra.')
+        df=pd.read_excel(workbook,sheet_name=sheet,header=header_row)
+    elif name.endswith('.csv'):
+        df=pd.read_csv(path_or_file,sep=None,engine='python')
+    else:
+        raise RuntimeError('Formato Listone non supportato: usa il file ufficiale .xlsx oppure un CSV.')
     if {'player','fvm_1000'}.issubset(df.columns): return df
     return FantacalcioPublicSource.normalize(df)

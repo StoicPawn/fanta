@@ -43,7 +43,7 @@ with setup_tab:
     a,b=st.columns(2)
     with a:
         season=int(st.number_input('Anno iniziale stagione',2020,2030,2026)); label=st.text_input('Stagione Fantacalcio','2026/27')
-        list_file=st.file_uploader('Listone ufficiale corrente CSV/XLSX',type=['csv','xlsx','xls'],help='Fonte canonica: nessun giocatore assente da questo file entrerà nel dataset. Senza file l\'app prova a leggere la versione corrente da Fantacalcio.it.')
+        list_file=st.file_uploader('Listone ufficiale corrente CSV/XLSX',type=['csv','xlsx'],help='Fonte canonica: nessun giocatore assente da questo file entrerà nel dataset. Senza file l\'app prova a leggere la versione corrente da Fantacalcio.it.')
         build_profile=st.radio('Profilo costruzione',['Rapido · Listone + stagione corrente','Completo · tutte le fonti abilitate'],horizontal=True,help='Rapido è sufficiente per provare subito l’app; Completo richiede più tempo ma aumenta qualità e copertura storica.')
     with b:
         use_team=st.toggle('football-data.co.uk · team context',True); use_elo=st.toggle('ClubElo · forza squadra',True); use_dev=st.toggle('fantacalcio.dev · storico fantasy',True); use_fco=st.toggle('Fantacalcio-Online · cross-check',True); use_api=st.toggle('API-Football · dettaglio/infortuni',True); use_big=st.toggle('BigBalls · newcomers esteri',True)

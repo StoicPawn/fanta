@@ -7,6 +7,7 @@ from fanta_lab.reconcile import CoverageReport
 from fanta_lab.sources.fantacalcio import (
     FantacalcioCurrentStatsSource,
     FantacalcioPublicSource,
+    load_user_list,
 )
 
 
@@ -59,6 +60,24 @@ def test_current_stats_parser_reads_opening_matchdays():
     assert out.loc['Malen','current_goals']==5
     assert out.loc['Malen','current_penalties_attempted']==1
     assert out.current_league_matchdays.eq(2).all()
+
+
+def test_official_excel_with_title_row_and_tutti_sheet_is_normalized(tmp_path):
+    path=tmp_path/'Quotazioni_Fantacalcio_Stagione_2026_27.xlsx'
+    source=pd.DataFrame([
+        {'Id':5585,'R':'A','RM':'Pc','Nome':'Malen','Squadra':'Roma','Qt.A':36,'Qt.I':34,'Diff.':2,'Qt.A M':36,'Qt.I M':34,'Diff.M':2,'FVM':414,'FVM M':414},
+        {'Id':2764,'R':'A','RM':'Pc','Nome':'Martinez L.','Squadra':'Inter','Qt.A':34,'Qt.I':35,'Diff.':-1,'Qt.A M':34,'Qt.I M':35,'Diff.M':-1,'FVM':367,'FVM M':367},
+    ])
+    with pd.ExcelWriter(path,engine='openpyxl') as writer:
+        source.to_excel(writer,sheet_name='Tutti',index=False,startrow=1)
+        pd.DataFrame({'Nome':['Ceduto'],'Squadra':['Roma']}).to_excel(writer,sheet_name='Ceduti',index=False,startrow=1)
+    out=load_user_list(path).set_index('player')
+    assert list(out.index)==['Malen','Martinez L.']
+    assert out.loc['Malen','role_fanta']=='A'
+    assert out.loc['Malen','team_fanta']=='Roma'
+    assert out.loc['Malen','quotation']==36
+    assert out.loc['Malen','quotation_initial']==34
+    assert out.loc['Malen','fvm_1000']==414
 
 
 def test_current_official_evidence_gives_majority_low_confidence_predictions():
