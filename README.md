@@ -89,7 +89,7 @@ On first use, configure the league on the home page, then open **Data Sources**.
 
 The sidebar exposes five local save slots. **Salva ora** writes league rules, the built player dataset, purchases, manager names and opponent notes to the selected slot. Loading or saving a slot makes it the active slot; with **Autosave slot attivo** enabled, subsequent changes are persisted automatically. The last active slot is automatically restored when the app is started again. **Nuovo / pulisci lavoro corrente** starts from an empty session without deleting existing slots; slots can be deleted individually or all together from the sidebar.
 
-Save files live under `.fanta_saves/` in the local application folder and are excluded from Git. Runtime API tokens and widget/password values are not included in snapshots.
+Save files live in the user's home profile under `~/.fanta_auction_lab/saves/` (on Windows, typically `C:\Users\<utente>\.fanta_auction_lab\saves`). They therefore survive replacing or re-downloading the application folder. Runtime API tokens and widget/password values are not included in snapshots.
 
 To stop the local app, return to its black terminal window and press `Ctrl+C`. Subsequent starts require only `run_windows.bat`.
 

@@ -8,7 +8,9 @@ import pickle
 from typing import Any, MutableMapping
 
 
-SAVE_DIR = Path(__file__).resolve().parents[2] / '.fanta_saves'
+# Keep saves outside the downloaded application folder so they survive replacing
+# fanta-main with a freshly downloaded ZIP/version.
+SAVE_DIR = Path.home() / '.fanta_auction_lab' / 'saves'
 SLOT_COUNT = 5
 SAVE_VERSION = 1
 
