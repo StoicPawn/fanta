@@ -19,7 +19,7 @@ A shared UI design system (`src/fanta_lab/ui.py`) keeps headers, metrics, tables
 
 ## Independent valuation
 
-The independent model is deliberately isolated from FVM/quotation/auction prices. Sporting score is built first from expected fantasy points, minutes/availability, expected production, replacement scarcity, context and data confidence. Market information is attached afterwards only to calculate disagreement/edge. If a player has fewer than 90 observed minutes across the supported individual-stat sources, the model does not fabricate a role-prior prediction: score, points, fair price and MAX BID remain unavailable and the UI shows the reason explicitly.
+The independent model is deliberately isolated from FVM/quotation/auction prices. Sporting score is built first from expected fantasy points, minutes/availability, expected production, replacement scarcity, context and data confidence. Market information is attached afterwards only to calculate disagreement/edge. If a player has fewer than 90 observed minutes across the supported individual-stat sources, the model does not fabricate a role-prior prediction: score, points, fair price and MAX BID remain unavailable and the UI shows the reason explicitly. The official Listone valuation is still reported separately: FVM is scaled from 1,000 credits to the configured league budget, with the official quotation shown as a fallback when FVM is unavailable.
 
 The ranking is league-specific. Changing clean-sheet points, goals conceded, cards, penalty rules, roster slots, budget or defence modifier changes projected points, replacement levels, fair prices and the recommended target squad.
 

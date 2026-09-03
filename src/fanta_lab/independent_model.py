@@ -30,6 +30,32 @@ def _shrink_rate(events: pd.Series, minutes: pd.Series, role: pd.Series, prior: 
     return (w * raw.fillna(p) + (1-w) * p).clip(lower=0)
 
 
+def add_canonical_valuation(df:pd.DataFrame,rules:LeagueRules)->pd.DataFrame:
+    """Attach the official Listone valuation without treating it as model output.
+
+    FVM is expressed by Fantacalcio on a 1,000-credit budget, so it is scaled to the
+    configured league budget.  If FVM is absent, the official quotation is still
+    exposed as a reference, with a different unit and never used as an auction price.
+    """
+    out=df.copy()
+    fvm=_num(out,'fvm_1000',np.nan)
+    quotation=_num(out,'quotation',np.nan)
+    scaled=fvm*float(rules.budget)/1000.0
+    out['market_price_from_fvm']=scaled
+    out['canonical_value']=scaled.where(fvm.notna(),quotation)
+    out['canonical_value_source']=np.select(
+        [fvm.notna(),quotation.notna()],
+        [f'Listone Fantacalcio · FVM scalato su budget {rules.budget}','Listone Fantacalcio · quotazione ufficiale'],
+        default='Listone Fantacalcio · valutazione non disponibile',
+    )
+    out['canonical_value_unit']=np.select(
+        [fvm.notna(),quotation.notna()],
+        [f'crediti su {rules.budget}','quotazione ufficiale'],
+        default='',
+    )
+    return out
+
+
 def build_independent_valuation(df: pd.DataFrame, rules: LeagueRules) -> pd.DataFrame:
     """Independent valuation V1, fully rule-aware and market-isolated."""
     out = add_projections(df.copy(), rules)
@@ -89,9 +115,9 @@ def build_independent_valuation(df: pd.DataFrame, rules: LeagueRules) -> pd.Data
     out['independent_fair_price'] = rules.min_bid + (pool_budget*value_weight/denom if denom>0 else 0)
     out['independent_fair_price'] = out['independent_fair_price'].clip(lower=rules.min_bid).where(available,np.nan)
 
+    out=add_canonical_valuation(out,rules)
     if 'fvm_1000' in out:
-        market = _num(out, 'fvm_1000') * rules.budget / 1000.0
-        out['market_price_from_fvm'] = market
+        market = out['market_price_from_fvm']
         out['independent_price_edge'] = out['independent_fair_price'] - market
         out['independent_price_edge_conf_adj'] = out['independent_price_edge'] * conf
     unavailable_outputs=['replacement_points','vorp','production_component','availability_component','context_component',

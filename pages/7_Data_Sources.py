@@ -10,6 +10,7 @@ from src.fanta_lab.sources.football_data import FootballDataSource
 from src.fanta_lab.config import get_secret, secret_status
 from src.fanta_lab.source_registry import registry_frame
 from src.fanta_lab.projection import prediction_eligibility
+from src.fanta_lab.independent_model import add_canonical_valuation
 from src.fanta_lab.ui import apply_theme,page_header,section,common_sidebar
 
 st.set_page_config(page_title='Data Sources · Fanta Auction Lab',page_icon='🗄️',layout='wide')
@@ -65,7 +66,11 @@ with coverage_tab:
     else:
         prediction_check=df.apply(prediction_eligibility,axis=1)
         prediction_ok=prediction_check.map(lambda x:x[0])
-        display_df=df.copy()
+        rules=st.session_state.get('rules')
+        if rules is None:
+            from src.fanta_lab.models import LeagueRules
+            rules=LeagueRules()
+        display_df=add_canonical_valuation(df,rules)
         display_df['prediction_status']=prediction_ok.map({True:'DISPONIBILE',False:'NON DISPONIBILE'})
         display_df['prediction_reason']=prediction_check.map(lambda x:x[1])
         metrics={
@@ -92,5 +97,5 @@ with coverage_tab:
                 market=load_real_auction_averages(); rules=st.session_state.get('rules'); managers=int(getattr(rules,'managers',8)); budget=int(getattr(rules,'budget',500))
                 st.session_state.players=attach_market_prior(df,market,managers,budget); st.session_state.pop('scored',None); st.success(f'Prior aste reali agganciato · {len(market)} righe sorgente'); st.rerun()
             except Exception as e: st.warning(f'Fonte aste non disponibile: {e}')
-        show=[c for c in ['player','team','role','prediction_status','prediction_reason','fvm_1000','market_auction_price','minutes','xg','xa','dev_avg_vote','af_rating','currently_injured','external_minutes','team_attack_strength','team_defense_strength','team_elo','data_confidence'] if c in display_df]
+        show=[c for c in ['player','team','role','prediction_status','prediction_reason','canonical_value','canonical_value_source','quotation','fvm_1000','market_auction_price','minutes','xg','xa','dev_avg_vote','af_rating','currently_injured','external_minutes','team_attack_strength','team_defense_strength','team_elo','data_confidence'] if c in display_df]
         st.dataframe(display_df[show].sort_values('data_confidence',ascending=False) if 'data_confidence' in show else display_df[show],use_container_width=True,height=610,hide_index=True,column_config={'data_confidence':st.column_config.ProgressColumn('Confidenza dati',min_value=0,max_value=1,format='%.0%%')})

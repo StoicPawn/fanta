@@ -47,3 +47,13 @@ def test_live_engine_refuses_to_invent_bid_without_prediction():
     assert rec['decision']=='NO_PREDICTION'
     assert rec['max_bid'] is None
     assert rec['expected_clearing'] is None
+
+
+def test_live_engine_reports_canonical_value_when_prediction_is_missing():
+    r=rules4(); state=AuctionState(r,['Me','A','B','C'],'Me')
+    unavailable=pd.Series({'player':'New','role':'A','prediction_available':False,
+                           'prediction_reason':'Dati insufficienti','fair_price':float('nan'),
+                           'canonical_value':12.5,'canonical_value_source':'Listone Fantacalcio · FVM'})
+    rec=live_recommendation(unavailable,pd.DataFrame([unavailable]),state)
+    assert rec['canonical_value']==12.5
+    assert rec['canonical_value_source']=='Listone Fantacalcio · FVM'

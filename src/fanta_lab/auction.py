@@ -110,9 +110,12 @@ def simulated_clearing_price(player_row:pd.Series,pool:pd.DataFrame,state:Auctio
 def live_recommendation(player_row:pd.Series,pool:pd.DataFrame,state:AuctionState,risk_tolerance:float=.58)->dict:
     role=str(player_row.role); fair=max(1.0,float(player_row.get('fair_price',1) or 1)); left=state.slots_left(state.my_manager); my_budget=state.remaining(state.my_manager); total_left=sum(left.values()); mandatory=max(0,total_left-1)*max(1,state.rules.min_bid); hard_cap=max(0,my_budget-mandatory)
     if not _row_prediction_available(player_row):
+        canonical=player_row.get('canonical_value',player_row.get('market_price_from_fvm',np.nan))
+        canonical=float(canonical) if pd.notna(canonical) else None
         return {'max_bid':None,'decision':'NO_PREDICTION','inflation':state.inflation(role),'hard_cap':hard_cap,
                 'scarcity':None,'demand':None,'expected_clearing':None,'clearing_p80':None,'urgency':None,
-                'shortage_risk':None,'prediction_reason':player_row.get('prediction_reason','Dati insufficienti')}
+                'shortage_risk':None,'prediction_reason':player_row.get('prediction_reason','Dati insufficienti'),
+                'canonical_value':canonical,'canonical_value_source':player_row.get('canonical_value_source')}
     if left.get(role,0)<=0:return {'max_bid':0,'decision':'SKIP_ROLE_FULL','inflation':state.inflation(role),'hard_cap':hard_cap,'scarcity':0,'demand':0,'expected_clearing':0,'urgency':0,'calibration':state.forecast_calibration(role)}
     sim=simulated_clearing_price(player_row,pool,state); pts=float(player_row.get('independent_points',0) or 0); supply=_top_supply(pool,state,role,pts); confidence=float(player_row.get('reliability',.5) or .5); edge=float(player_row.get('edge_confidence_adjusted',player_row.get('edge_vs_market',0)) or 0); market=player_row.get('market_auction_price',np.nan); market=float(market) if pd.notna(market) else fair
     solvent=len(state.competing_managers(role)); shortage=max(0,solvent+1-supply['better_or_equal'])/max(1,solvent+1); my_role_need=left.get(role,0); role_budget_share=state.discretionary_budget(state.my_manager)/max(1,sum(left.values())); urgency=float(np.clip(.35*supply['scarcity']+.35*shortage+.20*sim['demand']+.10*(my_role_need/max(1,left.get(role,1))),0,1.75))
