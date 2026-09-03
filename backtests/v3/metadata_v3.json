@@ -3,8 +3,10 @@
   "feature_families": [
     "multiseason",
     "xg_regression",
+    "underlying_multiseason",
     "availability_trend",
-    "vote_stability"
+    "vote_stability",
+    "team_continuity"
   ],
   "metas": {
     "2019": {
@@ -16,34 +18,46 @@
       "role_metrics": [
         {
           "role": "A",
-          "n": 81,
-          "model_spearman": 0.5432372006173186,
-          "persistence_spearman": 0.5613492267008199,
-          "top20_overlap": 0.5294117647058824
+          "n": 80,
+          "model_spearman": 0.5860881934566144,
+          "persistence_spearman": 0.5633157329629495,
+          "top20_overlap": 0.5625
         },
         {
           "role": "C",
           "n": 116,
-          "model_spearman": 0.5698331968657436,
-          "persistence_spearman": 0.5849972705707919,
+          "model_spearman": 0.5787959062359013,
+          "persistence_spearman": 0.5920400113965999,
           "top20_overlap": 0.625
         },
         {
           "role": "D",
-          "n": 137,
-          "model_spearman": 0.4526782870507062,
-          "persistence_spearman": 0.4474837788543679,
+          "n": 138,
+          "model_spearman": 0.4934446194363618,
+          "persistence_spearman": 0.44292180625992855,
           "top20_overlap": 0.5
         },
         {
           "role": "P",
           "n": 24,
-          "model_spearman": 0.47432568007665876,
+          "model_spearman": 0.34155844155844156,
           "persistence_spearman": 0.5483800955902355,
           "top20_overlap": 0.2
         }
       ],
-      "understat_v3_available": true
+      "understat_v3_available": true,
+      "understat_v3": {
+        "players": 572,
+        "source": "understat-github-mirror",
+        "xg_coverage": 0.0782122905027933,
+        "previous_understat_players": 543
+      },
+      "feature_coverage": {
+        "xg": 0.0782122905027933,
+        "previous_xg": 0.055865921787709494,
+        "two_season_underlying": 0.0782122905027933,
+        "team_change_known": 1.0
+      }
     },
     "2020": {
       "prior_season": "2020-21",
@@ -54,34 +68,46 @@
       "role_metrics": [
         {
           "role": "A",
-          "n": 81,
-          "model_spearman": 0.4622654825360631,
-          "persistence_spearman": 0.4638689242899377,
-          "top20_overlap": 0.35294117647058826
+          "n": 80,
+          "model_spearman": 0.4555181660444818,
+          "persistence_spearman": 0.4459551326854117,
+          "top20_overlap": 0.3125
         },
         {
           "role": "C",
-          "n": 112,
-          "model_spearman": 0.47735432127976135,
-          "persistence_spearman": 0.48309812388927537,
-          "top20_overlap": 0.43478260869565216
+          "n": 113,
+          "model_spearman": 0.5230927481570377,
+          "persistence_spearman": 0.4862893354116371,
+          "top20_overlap": 0.391304347826087
         },
         {
           "role": "D",
           "n": 127,
-          "model_spearman": 0.37594821953660823,
-          "persistence_spearman": 0.3838313119024711,
-          "top20_overlap": 0.6153846153846154
+          "model_spearman": 0.3909699817993642,
+          "persistence_spearman": 0.3819359715974866,
+          "top20_overlap": 0.5769230769230769
         },
         {
           "role": "P",
           "n": 22,
-          "model_spearman": 0.23658949745906271,
+          "model_spearman": 0.14805194805194805,
           "persistence_spearman": 0.27159796725014124,
           "top20_overlap": 0.2
         }
       ],
-      "understat_v3_available": true
+      "understat_v3_available": true,
+      "understat_v3": {
+        "players": 594,
+        "source": "understat-github-mirror",
+        "xg_coverage": 0.06432748538011696,
+        "previous_understat_players": 571
+      },
+      "feature_coverage": {
+        "xg": 0.06432748538011696,
+        "previous_xg": 0.06140350877192982,
+        "two_season_underlying": 0.06432748538011696,
+        "team_change_known": 1.0
+      }
     },
     "2021": {
       "prior_season": "2021-22",
@@ -92,34 +118,46 @@
       "role_metrics": [
         {
           "role": "A",
-          "n": 76,
-          "model_spearman": 0.42029282696961,
-          "persistence_spearman": 0.40711424626447396,
+          "n": 77,
+          "model_spearman": 0.42180245689758283,
+          "persistence_spearman": 0.40366743345382844,
           "top20_overlap": 0.4375
         },
         {
           "role": "C",
           "n": 115,
-          "model_spearman": 0.4416273099146969,
-          "persistence_spearman": 0.4406426568247909,
-          "top20_overlap": 0.5652173913043478
+          "model_spearman": 0.39630672773613485,
+          "persistence_spearman": 0.45572661883268106,
+          "top20_overlap": 0.5217391304347826
         },
         {
           "role": "D",
-          "n": 126,
-          "model_spearman": 0.4370665450970093,
-          "persistence_spearman": 0.437740444865621,
-          "top20_overlap": 0.34615384615384615
+          "n": 125,
+          "model_spearman": 0.41842852208331754,
+          "persistence_spearman": 0.4219802975288954,
+          "top20_overlap": 0.32
         },
         {
           "role": "P",
           "n": 25,
-          "model_spearman": 0.36545490193242036,
+          "model_spearman": 0.21640316205533597,
           "persistence_spearman": 0.30230769230769233,
           "top20_overlap": 0.0
         }
       ],
-      "understat_v3_available": true
+      "understat_v3_available": true,
+      "understat_v3": {
+        "players": 608,
+        "source": "understat-github-mirror",
+        "xg_coverage": 0.05847953216374269,
+        "previous_understat_players": 593
+      },
+      "feature_coverage": {
+        "xg": 0.05847953216374269,
+        "previous_xg": 0.04093567251461988,
+        "two_season_underlying": 0.05847953216374269,
+        "team_change_known": 1.0
+      }
     },
     "2022": {
       "prior_season": "2022-23",
@@ -130,34 +168,46 @@
       "role_metrics": [
         {
           "role": "A",
-          "n": 75,
-          "model_spearman": 0.23003172164611155,
-          "persistence_spearman": 0.2470678606291645,
-          "top20_overlap": 0.26666666666666666
+          "n": 77,
+          "model_spearman": 0.21580523332859727,
+          "persistence_spearman": 0.23141131391438968,
+          "top20_overlap": 0.25
         },
         {
           "role": "C",
           "n": 105,
-          "model_spearman": 0.4961652609273281,
-          "persistence_spearman": 0.4958930885836629,
+          "model_spearman": 0.5902564975426795,
+          "persistence_spearman": 0.52970739762111,
           "top20_overlap": 0.47619047619047616
         },
         {
           "role": "D",
-          "n": 121,
-          "model_spearman": 0.38195625225271623,
-          "persistence_spearman": 0.3660781574287644,
-          "top20_overlap": 0.44
+          "n": 119,
+          "model_spearman": 0.36910775381540006,
+          "persistence_spearman": 0.34639248677208156,
+          "top20_overlap": 0.4166666666666667
         },
         {
           "role": "P",
           "n": 22,
-          "model_spearman": 0.6597006758406523,
+          "model_spearman": 0.5744360902255639,
           "persistence_spearman": 0.6969782825234287,
           "top20_overlap": 0.4
         }
       ],
-      "understat_v3_available": true
+      "understat_v3_available": true,
+      "understat_v3": {
+        "players": 577,
+        "source": "understat-github-mirror",
+        "xg_coverage": 0.08668730650154799,
+        "previous_understat_players": 608
+      },
+      "feature_coverage": {
+        "xg": 0.08668730650154799,
+        "previous_xg": 0.05572755417956656,
+        "two_season_underlying": 0.08668730650154799,
+        "team_change_known": 1.0
+      }
     },
     "2023": {
       "prior_season": "2023-24",
@@ -168,34 +218,46 @@
       "role_metrics": [
         {
           "role": "A",
-          "n": 85,
-          "model_spearman": 0.38185744763855134,
-          "persistence_spearman": 0.3904879639386372,
+          "n": 84,
+          "model_spearman": 0.39714716035305186,
+          "persistence_spearman": 0.40527323037264623,
           "top20_overlap": 0.4117647058823529
         },
         {
           "role": "C",
-          "n": 110,
-          "model_spearman": 0.4323931978827663,
-          "persistence_spearman": 0.4255009321507207,
-          "top20_overlap": 0.4090909090909091
+          "n": 114,
+          "model_spearman": 0.3754147049277724,
+          "persistence_spearman": 0.39681816436856016,
+          "top20_overlap": 0.34782608695652173
         },
         {
           "role": "D",
-          "n": 120,
-          "model_spearman": 0.28595140906127126,
-          "persistence_spearman": 0.3081234341120468,
-          "top20_overlap": 0.4583333333333333
+          "n": 117,
+          "model_spearman": 0.26548006446428046,
+          "persistence_spearman": 0.30631069416352136,
+          "top20_overlap": 0.4166666666666667
         },
         {
           "role": "P",
           "n": 24,
-          "model_spearman": 0.5643478260869564,
+          "model_spearman": 0.5592885375494071,
           "persistence_spearman": 0.568695652173913,
           "top20_overlap": 0.4
         }
       ],
-      "understat_v3_available": true
+      "understat_v3_available": true,
+      "understat_v3": {
+        "players": 590,
+        "source": "understat-github-mirror",
+        "xg_coverage": 0.06784660766961652,
+        "previous_understat_players": 577
+      },
+      "feature_coverage": {
+        "xg": 0.06784660766961652,
+        "previous_xg": 0.05309734513274336,
+        "two_season_underlying": 0.06784660766961652,
+        "team_change_known": 1.0
+      }
     },
     "2024": {
       "prior_season": "2024-25",
@@ -206,34 +268,46 @@
       "role_metrics": [
         {
           "role": "A",
-          "n": 82,
-          "model_spearman": 0.3903896386591205,
-          "persistence_spearman": 0.34688913196601995,
-          "top20_overlap": 0.4117647058823529
+          "n": 84,
+          "model_spearman": 0.36259002924924816,
+          "persistence_spearman": 0.3021221448397199,
+          "top20_overlap": 0.35294117647058826
         },
         {
           "role": "C",
-          "n": 111,
-          "model_spearman": 0.37019827746988704,
-          "persistence_spearman": 0.36966956695307335,
-          "top20_overlap": 0.391304347826087
+          "n": 112,
+          "model_spearman": 0.3616972122083922,
+          "persistence_spearman": 0.4044928223920198,
+          "top20_overlap": 0.43478260869565216
         },
         {
           "role": "D",
-          "n": 131,
-          "model_spearman": 0.3071125828246461,
-          "persistence_spearman": 0.30394221415744604,
-          "top20_overlap": 0.37037037037037035
+          "n": 128,
+          "model_spearman": 0.2890021167787498,
+          "persistence_spearman": 0.2981892885353856,
+          "top20_overlap": 0.34615384615384615
         },
         {
           "role": "P",
           "n": 27,
-          "model_spearman": 0.5171729567200161,
+          "model_spearman": 0.5217391304347825,
           "persistence_spearman": 0.499465736241999,
           "top20_overlap": 0.5
         }
       ],
-      "understat_v3_available": true
+      "understat_v3_available": true,
+      "understat_v3": {
+        "players": 599,
+        "source": "understat-github-mirror",
+        "xg_coverage": 0.08831908831908832,
+        "previous_understat_players": 590
+      },
+      "feature_coverage": {
+        "xg": 0.08831908831908832,
+        "previous_xg": 0.05128205128205128,
+        "two_season_underlying": 0.08831908831908832,
+        "team_change_known": 1.0
+      }
     }
   }
 }
