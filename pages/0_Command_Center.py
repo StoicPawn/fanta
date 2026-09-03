@@ -9,6 +9,7 @@ from src.fanta_lab.independent_model import build_independent_valuation
 from src.fanta_lab.auction import AuctionState, live_recommendation
 from src.fanta_lab.target_engine import build_target_plan, replacement_candidates
 from src.fanta_lab.plan_health import role_spend_envelopes, plan_resilience, role_risk_summary, alternative_buckets
+from src.fanta_lab.persistence import autosave_active_slot
 from src.fanta_lab.ui import apply_theme,page_header,section,common_sidebar,empty_state
 
 st.set_page_config(page_title='Command Center · Fanta Auction Lab',page_icon='🎛️',layout='wide')
@@ -73,7 +74,7 @@ with live_tab:
         if st.button('REGISTRA · RICALCOLA TUTTO',type='primary',use_container_width=True):
             brow=pool[pool.player==bought].iloc[0]; brec=live_recommendation(brow,pool,state,risk_tolerance=risk); market=brow.get('market_auction_price',None); market=float(market) if market is not None and pd.notna(market) else None
             fair=float(brow.fair_price) if pd.notna(brow.get('fair_price')) else None; clearing=float(brec['expected_clearing']) if brec.get('expected_clearing') is not None else None
-            st.session_state.purchases.append(AuctionPurchase(buyer,bought,str(brow.role),float(price),fair,market,clearing,note)); st.rerun()
+            st.session_state.purchases.append(AuctionPurchase(buyer,bought,str(brow.role),float(price),fair,market,clearing,note)); autosave_active_slot(st.session_state); st.rerun()
 
 with plan_tab:
     if plan.squad.empty: st.error('Nessuna rosa completa fattibile ai prezzi correnti.')
@@ -102,10 +103,13 @@ with room_tab:
     st.dataframe(pd.DataFrame(rows),use_container_width=True,hide_index=True)
     if st.session_state.purchases:
         section('Ultime vendite'); purch=pd.DataFrame([asdict(p) if isinstance(p,AuctionPurchase) else p for p in st.session_state.purchases]); st.dataframe(purch.tail(35).iloc[::-1],use_container_width=True,hide_index=True)
-        if st.button('↩️ Annulla ultima vendita'): st.session_state.purchases.pop(); st.rerun()
+        if st.button('↩️ Annulla ultima vendita'): st.session_state.purchases.pop(); autosave_active_slot(st.session_state); st.rerun()
 
 with notes_tab:
     section('Appunti sugli avversari','Le note rimangono nella sessione e possono accompagnare il modello quantitativo con segnali osservati dal vivo.')
     for m in names:
         key=f'note_{m}'; current=st.session_state.manager_notes.get(m,''); new=st.text_area(m,value=current,key=key,height=90)
         st.session_state.manager_notes[m]=new
+
+# Capture the latest notes and any other durable live-auction state.
+autosave_active_slot(st.session_state)
