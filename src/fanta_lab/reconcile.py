@@ -53,55 +53,65 @@ def fuzzy_join(left: pd.DataFrame, right: pd.DataFrame, suffix: str, threshold: 
 
 
 def build_master_roster(roster: pd.DataFrame, fantasy: pd.DataFrame | None) -> tuple[pd.DataFrame,CoverageReport]:
-    roster=roster.copy()
+    """Build the auction universe from the official Fantacalcio list only.
+
+    ``roster`` and every other provider are enrichment sources.  They may add fields to
+    an official player but can never add a player to the auction universe.  This keeps
+    the application aligned with the exact list used at the auction table.
+    """
+    roster=pd.DataFrame() if roster is None else roster.copy()
     fantasy=pd.DataFrame() if fantasy is None else fantasy.copy()
-    report=CoverageReport(teams=int(roster['team'].nunique()) if 'team' in roster else 0,
+    team_col='team_fanta' if 'team_fanta' in fantasy else 'team' if 'team' in fantasy else None
+    report=CoverageReport(teams=int(fantasy[team_col].nunique()) if team_col else 0,
                           roster_players=len(roster), fantasy_players=len(fantasy))
-    if roster.empty:
-        report.notes.append('Roster backbone vuoto.')
-        return roster, report
-    roster['_norm']=roster.player.map(norm_name)
     if fantasy.empty:
-        report.master_players=len(roster); report.unmatched_roster=roster.player.astype(str).tolist()
-        report.notes.append('Listone Fantacalcio corrente assente: impossibile certificare eleggibilità fantasy.')
-        return roster.drop(columns='_norm'), report
+        report.unmatched_roster=roster.player.astype(str).tolist() if 'player' in roster else []
+        report.notes.append('Listone Fantacalcio corrente assente: universo d\'asta non costruito.')
+        return pd.DataFrame(), report
+
     fantasy['_norm']=fantasy.player.map(norm_name)
-    f_index={n:i for i,n in fantasy['_norm'].items() if n}
-    choices=list(f_index.keys()); used=set(); rows=[]
-    for _, rr in roster.iterrows():
-        d=rr.to_dict(); n=rr['_norm']; idx=f_index.get(n); score=100 if idx is not None else 0
-        if idx is None and choices:
+    roster['_norm']=roster.player.map(norm_name) if 'player' in roster else pd.Series(dtype=str)
+    r_index={n:i for i,n in roster.get('_norm',pd.Series(dtype=str)).items() if n}
+    choices=list(r_index.keys()); used=set(); rows=[]
+    for fidx,fr in fantasy.iterrows():
+        d={c:fr[c] for c in fantasy.columns if c!='_norm'}
+        d['player']=fr['player']
+        official_team=fr.get('team_fanta',fr.get('team'))
+        official_role=fr.get('role_fanta',fr.get('role'))
+        d['team']=fr.get('team') if pd.isna(official_team) else official_team
+        d['role']=fr.get('role') if pd.isna(official_role) else official_role
+        d['fantasy_eligible']=True
+        d['official_listone']=True
+        n=fr['_norm']; ridx=r_index.get(n); score=100 if ridx is not None else 0
+        if ridx is None and n and choices:
             hit=process.extractOne(n,choices,scorer=fuzz.token_sort_ratio)
-            if hit and hit[1]>=90: idx=f_index[hit[0]]; score=hit[1]
-        if idx is not None:
-            used.add(idx); fr=fantasy.loc[idx]
-            for c in fantasy.columns:
-                if c not in {'player','_norm'}: d[c]=fr[c]
-            d['fantasy_eligible']=True; d['roster_match_score']=score
+            if hit and hit[1]>=90: ridx=r_index[hit[0]]; score=hit[1]
+        if ridx is not None:
+            used.add(ridx); rr=roster.loc[ridx]
+            for c in roster.columns:
+                if c in {'player','_norm'}: continue
+                target=c if c not in d and c not in {'team','role','source'} else c+'_roster'
+                d[target]=rr[c]
+            d['roster_match_score']=score
         else:
-            d['fantasy_eligible']=False; report.unmatched_roster.append(str(rr.player))
+            d['roster_match_score']=0
+            report.unmatched_fantasy.append(str(fr['player']))
         rows.append(d)
-    for idx,fr in fantasy.iterrows():
-        if idx in used: continue
-        rows.append({'player':fr['player'],'team':fr.get('team_fanta'),'team_tla':fr.get('team_fanta'),
-                     'position_raw':None,'role':fr.get('role'),'source':'fantacalcio.it-public',
-                     **{c:fr[c] for c in fantasy.columns if c not in {'player','_norm'}},
-                     'fantasy_eligible':True,'roster_match_score':0})
-        report.unmatched_fantasy.append(str(fr['player']))
-    out=pd.DataFrame(rows).drop(columns=['_norm'],errors='ignore')
-    if 'role_fanta' in out:
-        out['role']=out['role_fanta'].fillna(out.get('role'))
+
+    if 'player' in roster:
+        report.unmatched_roster=roster.loc[~roster.index.isin(used),'player'].astype(str).tolist()
+    out=pd.DataFrame(rows)
     dup=out.assign(_n=out.player.map(norm_name)).duplicated(['_n','team'],keep=False)
     report.duplicate_players=out.loc[dup,'player'].astype(str).tolist()
     report.master_players=len(out); report.matched_fantasy=len(used)
     if report.teams==20 and not report.duplicate_players and report.fantasy_players>=350:
         report.certification='CERTIFIED'
         if report.unmatched_fantasy:
-            report.notes.append(f'{len(report.unmatched_fantasy)} giocatori sono presenti solo nel listone: inclusi nel master come nuovi/da riconciliare.')
+            report.notes.append(f'{len(report.unmatched_fantasy)} giocatori del listone non hanno match nel roster esterno: restano inclusi, con enrichment eventualmente incompleto.')
         if report.unmatched_roster:
-            report.notes.append(f'{len(report.unmatched_roster)} elementi del roster non risultano nel listone: mantenuti ma non marcati fantasy_eligible.')
+            report.notes.append(f'{len(report.unmatched_roster)} elementi del roster esterno non risultano nel listone: esclusi dall\'universo d\'asta.')
     else:
-        report.notes.append('Gate fallito: servono 20 squadre, listone plausibilmente completo e zero duplicati ambigui.')
+        report.notes.append('Gate fallito: il listone ufficiale deve avere 20 squadre, almeno 350 giocatori e zero duplicati ambigui.')
     return out, report
 
 
@@ -111,5 +121,5 @@ def coverage_report(df: pd.DataFrame, expected_teams: int=20):
     return r
 
 def assert_certified(report):
-    if getattr(report,'teams',0)!=20 or getattr(report,'roster_players',0)<350:
-        raise RuntimeError(f'Copertura roster non valida: {getattr(report,"teams",0)}/20 squadre, {getattr(report,"roster_players",0)} giocatori')
+    if getattr(report,'teams',0)!=20 or getattr(report,'fantasy_players',0)<350:
+        raise RuntimeError(f'Copertura Listone non valida: {getattr(report,"teams",0)}/20 squadre, {getattr(report,"fantasy_players",0)} giocatori')

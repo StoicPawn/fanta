@@ -34,6 +34,7 @@ def build_independent_valuation(df: pd.DataFrame, rules: LeagueRules) -> pd.Data
     """Independent valuation V1, fully rule-aware and market-isolated."""
     out = add_projections(df.copy(), rules)
     role = out['role'].astype(str).str.upper()
+    available = out['prediction_available'].fillna(False).astype(bool)
     mins = _num(out, 'minutes', 0).fillna(0)
 
     xg = _num(out, 'xg', np.nan); xa = _num(out, 'xa', np.nan)
@@ -41,11 +42,12 @@ def build_independent_valuation(df: pd.DataFrame, rules: LeagueRules) -> pd.Data
     goal_signal = xg.where(xg.notna(), goals); assist_signal = xa.where(xa.notna(), assists)
     out['model_xg90'] = _shrink_rate(goal_signal, mins, role, {'P':0.0,'D':.045,'C':.12,'A':.30})
     out['model_xa90'] = _shrink_rate(assist_signal, mins, role, {'P':0.0,'D':.045,'C':.11,'A':.11})
+    out.loc[~available,['model_xg90','model_xa90']]=np.nan
 
     total_slots = {r: rules.slots()[r] * rules.managers for r in rules.slots()}
     replacement = {}
     for r, n in total_slots.items():
-        vals = pd.to_numeric(out.loc[role.eq(r), 'independent_points'], errors='coerce').dropna().sort_values(ascending=False)
+        vals = pd.to_numeric(out.loc[role.eq(r)&available, 'independent_points'], errors='coerce').dropna().sort_values(ascending=False)
         idx = min(len(vals)-1, max(0, int(np.ceil(n*1.08))-1)) if len(vals) else 0
         replacement[r] = float(vals.iloc[idx]) if len(vals) else 0.0
     out['replacement_points'] = role.map(replacement).fillna(0)
@@ -82,13 +84,18 @@ def build_independent_valuation(df: pd.DataFrame, rules: LeagueRules) -> pd.Data
     value_weight = out['vorp'].pow(1.18) * (.70+.30*conf)
     if rules.defense_modifier:
         value_weight = value_weight * np.where(mod_active, .90+.20*out['modifier_readiness'], 1.0)
+    value_weight=value_weight.where(available,0.0)
     denom = float(value_weight.sum())
     out['independent_fair_price'] = rules.min_bid + (pool_budget*value_weight/denom if denom>0 else 0)
-    out['independent_fair_price'] = out['independent_fair_price'].clip(lower=rules.min_bid)
+    out['independent_fair_price'] = out['independent_fair_price'].clip(lower=rules.min_bid).where(available,np.nan)
 
     if 'fvm_1000' in out:
         market = _num(out, 'fvm_1000') * rules.budget / 1000.0
         out['market_price_from_fvm'] = market
         out['independent_price_edge'] = out['independent_fair_price'] - market
         out['independent_price_edge_conf_adj'] = out['independent_price_edge'] * conf
-    return out.sort_values(['role','independent_score_v1'], ascending=[True,False]).reset_index(drop=True)
+    unavailable_outputs=['replacement_points','vorp','production_component','availability_component','context_component',
+                         'scarcity_component','certainty_component','modifier_readiness','independent_score_v1',
+                         'independent_score_floor','independent_score_ceiling']
+    out.loc[~available,[c for c in unavailable_outputs if c in out]]=np.nan
+    return out.sort_values(['prediction_available','role','independent_score_v1'],ascending=[False,True,False],na_position='last').reset_index(drop=True)

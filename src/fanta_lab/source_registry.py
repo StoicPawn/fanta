@@ -7,8 +7,8 @@ class SourceSpec:
     name:str; layer:str; access:str; ttl_seconds:int; priority:int; critical:bool; fields:tuple[str,...]
 
 SOURCES=(
- SourceSpec('football-data.org','roster','free-token',6*3600,100,True,('player','team','role')),
- SourceSpec('Fantacalcio.it/Listone','fantasy-market','public-or-user-file',6*3600,95,True,('quotation','fvm_1000','role_fanta')),
+ SourceSpec('Fantacalcio.it/Listone','canonical-auction-universe','public-or-user-file',6*3600,100,True,('player','team','role','quotation','fvm_1000')),
+ SourceSpec('football-data.org','roster-enrichment','free-token',6*3600,92,False,('source_player_id','position_raw','date_of_birth')),
  SourceSpec('Kickest','detailed-serie-a-stats','public',24*3600,94,False,('kickest_minutes','kickest_starts','kickest_shots','kickest_shots_on','kickest_key_passes','kickest_tackles','kickest_saves')),
  SourceSpec('Understat','expected-stats','public',7*24*3600,90,False,('minutes','xg','xa','npxg','xg_chain','xg_buildup')),
  SourceSpec('fantacalcio.dev','fantasy-history','public',7*24*3600,75,False,('avg_vote','dev_fantamedia','dev_appearances')),

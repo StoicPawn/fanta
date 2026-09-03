@@ -37,3 +37,13 @@ def test_real_market_bucket_scales_to_exact_budget():
     market=pd.DataFrame([{'player_key':'LAUTAROMARTINEZ','market_8_500':100.0}])
     out=attach_market_prior(players,market,managers=8,budget=600)
     assert out.loc[0,'market_auction_price'] == 120.0
+
+
+def test_live_engine_refuses_to_invent_bid_without_prediction():
+    r=rules4(); state=AuctionState(r,['Me','A','B','C'],'Me')
+    unavailable=pd.Series({'player':'New','role':'A','prediction_available':False,
+                           'prediction_reason':'Dati insufficienti','fair_price':float('nan')})
+    rec=live_recommendation(unavailable,pd.DataFrame([unavailable]),state)
+    assert rec['decision']=='NO_PREDICTION'
+    assert rec['max_bid'] is None
+    assert rec['expected_clearing'] is None

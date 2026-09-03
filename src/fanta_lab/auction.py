@@ -6,6 +6,15 @@ import numpy as np
 import pandas as pd
 from .models import LeagueRules, AuctionPurchase
 
+def _prediction_mask(df:pd.DataFrame)->pd.Series:
+    if 'prediction_available' not in df:
+        return pd.Series(True,index=df.index,dtype=bool)
+    return df['prediction_available'].fillna(False).astype(bool)
+
+def _row_prediction_available(row:pd.Series)->bool:
+    value=row.get('prediction_available',True)
+    return bool(value) if pd.notna(value) else False
+
 class AuctionState:
     def __init__(self,rules:LeagueRules,manager_names:list[str],my_manager:str):
         self.rules=rules; self.manager_names=manager_names; self.my_manager=my_manager; self.purchases:list[AuctionPurchase]=[]; self._sim_cache={}
@@ -72,7 +81,7 @@ def allocate_fair_prices(df:pd.DataFrame,rules:LeagueRules,reserve_per_slot:floa
 
 
 def _top_supply(pool:pd.DataFrame,state:AuctionState,role:str,player_points:float)->dict:
-    sold={p.player for p in state.purchases}; avail=pool[(pool.role==role)&(~pool.player.isin(sold))].copy()
+    sold={p.player for p in state.purchases}; avail=pool[(pool.role==role)&(~pool.player.isin(sold))&_prediction_mask(pool)].copy()
     if avail.empty:return {'better_or_equal':0,'league_need':0,'scarcity':1.0,'replacement':0.0,'tier_pressure':2.0}
     avail=avail.sort_values('independent_points',ascending=False); league_need=sum(state.slots_left(m).get(role,0) for m in state.manager_names); ridx=min(len(avail)-1,max(0,league_need-1)); repl=float(avail.iloc[ridx].independent_points)
     better=int((pd.to_numeric(avail.independent_points,errors='coerce')>=player_points*.94).sum()); competitors=len(state.competing_managers(role))+(1 if state.slots_left(state.my_manager).get(role,0)>0 else 0)
@@ -100,6 +109,10 @@ def simulated_clearing_price(player_row:pd.Series,pool:pd.DataFrame,state:Auctio
 
 def live_recommendation(player_row:pd.Series,pool:pd.DataFrame,state:AuctionState,risk_tolerance:float=.58)->dict:
     role=str(player_row.role); fair=max(1.0,float(player_row.get('fair_price',1) or 1)); left=state.slots_left(state.my_manager); my_budget=state.remaining(state.my_manager); total_left=sum(left.values()); mandatory=max(0,total_left-1)*max(1,state.rules.min_bid); hard_cap=max(0,my_budget-mandatory)
+    if not _row_prediction_available(player_row):
+        return {'max_bid':None,'decision':'NO_PREDICTION','inflation':state.inflation(role),'hard_cap':hard_cap,
+                'scarcity':None,'demand':None,'expected_clearing':None,'clearing_p80':None,'urgency':None,
+                'shortage_risk':None,'prediction_reason':player_row.get('prediction_reason','Dati insufficienti')}
     if left.get(role,0)<=0:return {'max_bid':0,'decision':'SKIP_ROLE_FULL','inflation':state.inflation(role),'hard_cap':hard_cap,'scarcity':0,'demand':0,'expected_clearing':0,'urgency':0,'calibration':state.forecast_calibration(role)}
     sim=simulated_clearing_price(player_row,pool,state); pts=float(player_row.get('independent_points',0) or 0); supply=_top_supply(pool,state,role,pts); confidence=float(player_row.get('reliability',.5) or .5); edge=float(player_row.get('edge_confidence_adjusted',player_row.get('edge_vs_market',0)) or 0); market=player_row.get('market_auction_price',np.nan); market=float(market) if pd.notna(market) else fair
     solvent=len(state.competing_managers(role)); shortage=max(0,solvent+1-supply['better_or_equal'])/max(1,solvent+1); my_role_need=left.get(role,0); role_budget_share=state.discretionary_budget(state.my_manager)/max(1,sum(left.values())); urgency=float(np.clip(.35*supply['scarcity']+.35*shortage+.20*sim['demand']+.10*(my_role_need/max(1,left.get(role,1))),0,1.75))

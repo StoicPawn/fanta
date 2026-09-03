@@ -9,4 +9,6 @@ jobs:
         with: {python-version: '3.12'}
       - run: pip install -r requirements.txt pytest
       - run: python -m compileall -q app.py src pages
-      - run: PYTHONPATH=src pytest -q
+      # Tests intentionally cover both supported import styles: ``fanta_lab`` from
+      # ``src`` and ``src.fanta_lab`` from the repository root.
+      - run: PYTHONPATH=.:src pytest -q

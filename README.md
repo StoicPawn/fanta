@@ -19,7 +19,7 @@ A shared UI design system (`src/fanta_lab/ui.py`) keeps headers, metrics, tables
 
 ## Independent valuation
 
-The independent model is deliberately isolated from FVM/quotation/auction prices. Sporting score is built first from expected fantasy points, minutes/availability, expected production, replacement scarcity, context and data confidence. Market information is attached afterwards only to calculate disagreement/edge.
+The independent model is deliberately isolated from FVM/quotation/auction prices. Sporting score is built first from expected fantasy points, minutes/availability, expected production, replacement scarcity, context and data confidence. Market information is attached afterwards only to calculate disagreement/edge. If a player has fewer than 90 observed minutes across the supported individual-stat sources, the model does not fabricate a role-prior prediction: score, points, fair price and MAX BID remain unavailable and the UI shows the reason explicitly.
 
 The ranking is league-specific. Changing clean-sheet points, goals conceded, cards, penalty rules, roster slots, budget or defence modifier changes projected points, replacement levels, fair prices and the recommended target squad.
 
@@ -45,8 +45,8 @@ Therefore MAX BID is not a static ceiling. It can rise above model fair value wh
 
 ## Real-data sources wired into the engine
 
-- **football-data.org** — current Serie A teams and squads; roster authority. Free token.
-- **Fantacalcio.it / user Listone** — role, quotation and FVM; market layer.
+- **Fantacalcio.it / official user Listone** — the only canonical auction universe, plus official role, quotation and FVM.
+- **football-data.org** — optional current Serie A squad enrichment. It cannot add players outside the Listone. Free token.
 - **Kickest public Serie A statistics** — detailed player production such as appearances, starts, minutes, goals, shots, shots on target, penalties, assists, key passes, discipline, recoveries, tackles, clean sheets and saves when publicly exposed.
 - **Understat** — historical minutes, goals, assists, shots, key passes, xG, xA, npxG, xGChain and xGBuildup.
 - **fantacalcio.dev** — multi-season fantasy history: fantamedia, average vote, goals, assists and appearances.
@@ -68,7 +68,7 @@ export BIGBALLS_TOKEN='...'
 
 ## Data quality and refresh policy
 
-Roster authority and enrichment remain separate. Optional sources fail softly and are logged; a broken enrichment never deletes a player. Missing facts are not fabricated and lower `data_confidence`/reliability.
+The official Fantacalcio Listone and enrichment remain strictly separate. Every pipeline merge is left-anchored to the Listone: external sources can add fields to its players but can never expand the auction universe. Optional sources fail softly and are logged; a broken enrichment never deletes a Listone player. Missing facts are not fabricated; when individual evidence is insufficient, `prediction_available=False` and model outputs stay null.
 
 **Gap Analyzer** measures missing layers player by player. **Source Control** maps those gaps to source priority and freshness policy. Rate-limited or fragile responses can be cached under `.cache/fanta_lab/`; stale fallback is explicit rather than silently presented as fresh data.
 
