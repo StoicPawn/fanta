@@ -40,3 +40,14 @@ def test_insufficient_data_never_creates_model_outputs_from_fvm():
     assert pd.isna(row.independent_score_v1)
     assert pd.isna(row.independent_fair_price)
     assert pd.notna(row.market_price_from_fvm)
+    assert row.canonical_value == 200
+    assert 'FVM scalato' in row.canonical_value_source
+
+
+def test_official_quotation_is_reported_if_fvm_is_missing():
+    players=pd.DataFrame([{'player':'New','team':'D','role':'A','minutes':0,'quotation':17,'fvm_1000':None}])
+    row=build_independent_valuation(players,LeagueRules(budget=500)).iloc[0]
+    assert not bool(row.prediction_available)
+    assert row.canonical_value == 17
+    assert row.canonical_value_unit == 'quotazione ufficiale'
+    assert pd.isna(row.independent_fair_price)

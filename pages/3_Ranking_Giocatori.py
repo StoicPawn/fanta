@@ -41,10 +41,12 @@ with list_tab:
         mask=view.player.astype(str).str.contains(query,case=False,na=False)
         if 'team' in view: mask|=view.team.astype(str).str.contains(query,case=False,na=False)
         view=view[mask]
-    cols=[c for c in ['player','team','role','prediction_status','prediction_reason','independent_score_v1','independent_score_floor','independent_score_ceiling','independent_points','projected_points_p10','projected_points_p50','projected_points_p90','vorp','independent_fair_price','reliability','projected_minutes','model_xg90','model_xa90','fvm_1000','market_price_from_fvm','independent_price_edge','independent_price_edge_conf_adj'] if c in view]
+    cols=[c for c in ['player','team','role','prediction_status','prediction_reason','canonical_value','canonical_value_source','quotation','fvm_1000','independent_score_v1','independent_score_floor','independent_score_ceiling','independent_points','projected_points_p10','projected_points_p50','projected_points_p90','vorp','independent_fair_price','reliability','projected_minutes','model_xg90','model_xa90','independent_price_edge','independent_price_edge_conf_adj'] if c in view]
     st.dataframe(view.sort_values(sort if sort in view else 'independent_score_v1',ascending=False)[cols],use_container_width=True,height=690,hide_index=True,column_config={
         'player':'Giocatore','team':'Squadra','role':'R','independent_score_v1':st.column_config.NumberColumn('Score',format='%.1f'),
         'independent_score_floor':st.column_config.NumberColumn('Floor',format='%.1f'),'independent_score_ceiling':st.column_config.NumberColumn('Ceiling',format='%.1f'),
+        'canonical_value':st.column_config.NumberColumn('Valore canonico',format='%.1f'),'canonical_value_source':'Fonte valore canonico',
+        'quotation':st.column_config.NumberColumn('Quotazione ufficiale',format='%.0f'),'fvm_1000':st.column_config.NumberColumn('FVM 1000',format='%.0f'),
         'independent_points':st.column_config.NumberColumn('Punti',format='%.1f'),'vorp':st.column_config.NumberColumn('VORP',format='%.1f'),
         'independent_fair_price':st.column_config.NumberColumn('Fair',format='%.0f'),'reliability':st.column_config.ProgressColumn('Affidabilità',min_value=0,max_value=1,format='%.0%%'),
         'independent_price_edge_conf_adj':st.column_config.NumberColumn('Edge adj.',format='%+.1f')})
@@ -54,9 +56,11 @@ with detail_tab:
     chosen=st.selectbox('Giocatore',ranked.sort_values('independent_score_v1',ascending=False).player.tolist(),key='ranking_detail_player')
     row=ranked[ranked.player==chosen].iloc[0]
     has_prediction=bool(row.get('prediction_available',False))
+    canonical=row.get('canonical_value')
+    canonical_text=f"{float(canonical):.1f} {row.get('canonical_value_unit','')}" if pd.notna(canonical) else 'non disponibile nel Listone'
     if not has_prediction:
-        st.warning(f"**Il modello non può fare una predizione per {chosen}.** {row.get('prediction_reason','Dati insufficienti')}.")
-    a=st.columns(6)
+        st.warning(f"**Il modello non può fare una valutazione indipendente per {chosen}.** {row.get('prediction_reason','Dati insufficienti')}. Come riferimento resta disponibile la valutazione canonica: **{canonical_text}**.")
+    a=st.columns(7)
     def metric_value(key,fmt):
         value=row.get(key)
         return format(float(value),fmt) if has_prediction and pd.notna(value) else '—'
@@ -64,8 +68,9 @@ with detail_tab:
     a[1].metric('Punti attesi',metric_value('independent_points','.1f'))
     a[2].metric('VORP',metric_value('vorp','.1f'))
     a[3].metric('Fair price',metric_value('independent_fair_price','.0f'))
-    a[4].metric('Affidabilità',metric_value('reliability','.0%'))
-    a[5].metric('Minuti',metric_value('projected_minutes','.0f'))
+    a[4].metric('Valore canonico',f"{float(canonical):.1f}" if pd.notna(canonical) else '—',help=row.get('canonical_value_source'))
+    a[5].metric('Affidabilità',metric_value('reliability','.0%'))
+    a[6].metric('Minuti',metric_value('projected_minutes','.0f'))
     c1,c2=st.columns(2)
     with c1:
         section('Distribuzione prevista')
@@ -75,9 +80,9 @@ with detail_tab:
         else: st.caption('Distribuzione non calcolata: dati individuali insufficienti.')
     with c2:
         section('Mercato vs modello')
-        comp=pd.DataFrame({'Voce':['Fair indipendente','Prezzo FVM scalato','Edge','Edge corretto per confidenza'],'Valore':[row.get('independent_fair_price'),row.get('market_price_from_fvm'),row.get('independent_price_edge'),row.get('independent_price_edge_conf_adj')]})
+        comp=pd.DataFrame({'Voce':['Fair indipendente','Valore canonico Listone','Quotazione ufficiale','FVM su 1000','Edge','Edge corretto per confidenza'],'Valore':[row.get('independent_fair_price'),row.get('canonical_value'),row.get('quotation'),row.get('fvm_1000'),row.get('independent_price_edge'),row.get('independent_price_edge_conf_adj')]})
         st.dataframe(comp,use_container_width=True,hide_index=True)
-        st.caption('Il mercato non entra nella costruzione dello score: serve soltanto per il confronto finale.')
+        st.caption(f"{row.get('canonical_value_source','Valore canonico non disponibile')}. Il mercato non entra nella costruzione dello score: serve soltanto per il confronto finale o come riferimento quando il modello non può stimare.")
 
 with top_tab:
     section('Top 10 per ruolo')
