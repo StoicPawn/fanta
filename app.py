@@ -4,6 +4,7 @@ import pandas as pd
 import streamlit as st
 
 from src.fanta_lab.models import LeagueRules
+from src.fanta_lab.persistence import autosave_active_slot
 from src.fanta_lab.ui import apply_theme,page_header,section,common_sidebar
 
 st.set_page_config(page_title='Fanta Auction Lab',page_icon='⚽',layout='wide')
@@ -85,3 +86,6 @@ with a: st.page_link('pages/6_Strategy_Lab.py',label='Strategy Lab · BUY vs WAI
 with b: st.page_link('pages/8_Gap_Analyzer.py',label='Gap Analyzer · qualità dati',icon='🧩')
 with c: st.page_link('pages/9_Source_Control.py',label='Source Control · refresh/cache',icon='🔄')
 with d: st.page_link('pages/7_Advanced_Settings_and_Health.py',label='Advanced & Health',icon='🩺')
+
+# Persist the final values assigned by the widgets in this rerun.
+autosave_active_slot(st.session_state)
