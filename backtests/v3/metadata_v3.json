@@ -19,21 +19,21 @@
         {
           "role": "A",
           "n": 80,
-          "model_spearman": 0.5860881934566144,
+          "model_spearman": 0.5894167852062588,
           "persistence_spearman": 0.5633157329629495,
           "top20_overlap": 0.5625
         },
         {
           "role": "C",
           "n": 116,
-          "model_spearman": 0.5787959062359013,
+          "model_spearman": 0.5867264402474394,
           "persistence_spearman": 0.5920400113965999,
-          "top20_overlap": 0.625
+          "top20_overlap": 0.5833333333333334
         },
         {
           "role": "D",
           "n": 138,
-          "model_spearman": 0.4934446194363618,
+          "model_spearman": 0.49638085910600344,
           "persistence_spearman": 0.44292180625992855,
           "top20_overlap": 0.5
         },
@@ -69,28 +69,28 @@
         {
           "role": "A",
           "n": 80,
-          "model_spearman": 0.4555181660444818,
+          "model_spearman": 0.45683264104316734,
           "persistence_spearman": 0.4459551326854117,
           "top20_overlap": 0.3125
         },
         {
           "role": "C",
           "n": 113,
-          "model_spearman": 0.5230927481570377,
+          "model_spearman": 0.5347260659792804,
           "persistence_spearman": 0.4862893354116371,
           "top20_overlap": 0.391304347826087
         },
         {
           "role": "D",
           "n": 127,
-          "model_spearman": 0.3909699817993642,
+          "model_spearman": 0.38919852661495585,
           "persistence_spearman": 0.3819359715974866,
-          "top20_overlap": 0.5769230769230769
+          "top20_overlap": 0.5384615384615384
         },
         {
           "role": "P",
           "n": 22,
-          "model_spearman": 0.14805194805194805,
+          "model_spearman": 0.15194805194805194,
           "persistence_spearman": 0.27159796725014124,
           "top20_overlap": 0.2
         }
@@ -119,21 +119,21 @@
         {
           "role": "A",
           "n": 77,
-          "model_spearman": 0.42180245689758283,
+          "model_spearman": 0.4280668498218043,
           "persistence_spearman": 0.40366743345382844,
           "top20_overlap": 0.4375
         },
         {
           "role": "C",
           "n": 115,
-          "model_spearman": 0.39630672773613485,
+          "model_spearman": 0.3958609879795719,
           "persistence_spearman": 0.45572661883268106,
-          "top20_overlap": 0.5217391304347826
+          "top20_overlap": 0.4782608695652174
         },
         {
           "role": "D",
           "n": 125,
-          "model_spearman": 0.41842852208331754,
+          "model_spearman": 0.4235735237431135,
           "persistence_spearman": 0.4219802975288954,
           "top20_overlap": 0.32
         },
@@ -169,21 +169,21 @@
         {
           "role": "A",
           "n": 77,
-          "model_spearman": 0.21580523332859727,
+          "model_spearman": 0.22563460622623488,
           "persistence_spearman": 0.23141131391438968,
           "top20_overlap": 0.25
         },
         {
           "role": "C",
           "n": 105,
-          "model_spearman": 0.5902564975426795,
+          "model_spearman": 0.5997390180857904,
           "persistence_spearman": 0.52970739762111,
-          "top20_overlap": 0.47619047619047616
+          "top20_overlap": 0.5238095238095238
         },
         {
           "role": "D",
           "n": 119,
-          "model_spearman": 0.36910775381540006,
+          "model_spearman": 0.36888478837504324,
           "persistence_spearman": 0.34639248677208156,
           "top20_overlap": 0.4166666666666667
         },
@@ -219,21 +219,21 @@
         {
           "role": "A",
           "n": 84,
-          "model_spearman": 0.39714716035305186,
+          "model_spearman": 0.38991543452558663,
           "persistence_spearman": 0.40527323037264623,
           "top20_overlap": 0.4117647058823529
         },
         {
           "role": "C",
           "n": 114,
-          "model_spearman": 0.3754147049277724,
+          "model_spearman": 0.3733128447993551,
           "persistence_spearman": 0.39681816436856016,
-          "top20_overlap": 0.34782608695652173
+          "top20_overlap": 0.43478260869565216
         },
         {
           "role": "D",
           "n": 117,
-          "model_spearman": 0.26548006446428046,
+          "model_spearman": 0.26835009274046623,
           "persistence_spearman": 0.30631069416352136,
           "top20_overlap": 0.4166666666666667
         },
@@ -269,21 +269,21 @@
         {
           "role": "A",
           "n": 84,
-          "model_spearman": 0.36259002924924816,
+          "model_spearman": 0.3405434865476113,
           "persistence_spearman": 0.3021221448397199,
           "top20_overlap": 0.35294117647058826
         },
         {
           "role": "C",
           "n": 112,
-          "model_spearman": 0.3616972122083922,
+          "model_spearman": 0.36861372108642226,
           "persistence_spearman": 0.4044928223920198,
-          "top20_overlap": 0.43478260869565216
+          "top20_overlap": 0.4782608695652174
         },
         {
           "role": "D",
           "n": 128,
-          "model_spearman": 0.2890021167787498,
+          "model_spearman": 0.29161718149972843,
           "persistence_spearman": 0.2981892885353856,
           "top20_overlap": 0.34615384615384615
         },
