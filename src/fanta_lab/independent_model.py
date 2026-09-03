@@ -68,6 +68,10 @@ def build_independent_valuation(df: pd.DataFrame, rules: LeagueRules) -> pd.Data
     goal_signal = xg.where(xg.notna(), goals); assist_signal = xa.where(xa.notna(), assists)
     out['model_xg90'] = _shrink_rate(goal_signal, mins, role, {'P':0.0,'D':.045,'C':.12,'A':.30})
     out['model_xa90'] = _shrink_rate(assist_signal, mins, role, {'P':0.0,'D':.045,'C':.11,'A':.11})
+    # ``project_player`` already performs conservative current-form and fantasy-history
+    # shrinkage. Reuse those rates when exact historical minutes are unavailable.
+    out['model_xg90'] = out['model_xg90'].where(mins.gt(0), _num(out,'pred_goal90',np.nan))
+    out['model_xa90'] = out['model_xa90'].where(mins.gt(0), _num(out,'pred_assist90',np.nan))
     out.loc[~available,['model_xg90','model_xa90']]=np.nan
 
     total_slots = {r: rules.slots()[r] * rules.managers for r in rules.slots()}

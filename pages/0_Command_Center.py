@@ -53,6 +53,8 @@ with live_tab:
             canonical_text=f"{float(canonical):.1f} {called.get('canonical_value_unit','')}" if pd.notna(canonical) else 'non disponibile nel Listone'
             st.warning(f"**Il modello non può fare una valutazione indipendente per {called_name}.** {called.get('prediction_reason','Dati insufficienti')}. Valutazione canonica: **{canonical_text}** ({called.get('canonical_value_source','Listone Fantacalcio')}). Puoi registrare normalmente la vendita, ma MAX BID, fair indipendente e sostituti quantitativi non vengono inventati.")
         else:
+            if called.get('prediction_confidence')=='BASSA':
+                st.warning(f"**Predizione a bassa confidenza.** {called.get('prediction_reason','Campione individuale limitato')}. Il MAX BID incorpora più prudenza, ma va confrontato con il valore canonico.")
             if rec['decision']=='PUSH_IF_NEEDED': st.warning('**PUSH IF NEEDED** · aspettare rischia di degradare il piano finale.')
             elif rec['decision'] in {'TARGET','BUY_AT_MARKET'}: st.success(f"**{rec['decision']}** · il prezzo è compatibile con la strategia corrente.")
             else: st.info(f"**{rec['decision']}** · valuta le alternative prima di inseguire il prezzo.")
