@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import io
+
 import pandas as pd
 import streamlit as st
 
@@ -7,9 +9,50 @@ from src.fanta_lab.models import LeagueRules
 from src.fanta_lab.independent_model import build_independent_valuation
 from src.fanta_lab.ui import apply_theme, page_header, section, common_sidebar, empty_state
 
+
+RANKING_COLUMNS=[
+    'player','team','role','prediction_status','prediction_confidence','prediction_reason',
+    'independent_fair_price','reliability','independent_score_v1','independent_score_floor','independent_score_ceiling',
+    'independent_points','projected_points_p10','projected_points_p50','projected_points_p90','vorp','projected_minutes',
+    'model_xg90','model_xa90','canonical_value','canonical_value_source','quotation','fvm_1000',
+    'independent_price_edge','independent_price_edge_conf_adj'
+]
+
+EXPORT_LABELS={
+    'player':'Giocatore','team':'Squadra','role':'Ruolo','prediction_status':'Stato predizione',
+    'prediction_confidence':'Confidenza','prediction_reason':'Motivo/confidenza',
+    'independent_fair_price':'Fair value motore (indipendente)','reliability':'Affidabilità',
+    'independent_score_v1':'Score motore','independent_score_floor':'Score floor','independent_score_ceiling':'Score ceiling',
+    'independent_points':'Punti attesi motore','projected_points_p10':'Punti P10','projected_points_p50':'Punti P50',
+    'projected_points_p90':'Punti P90','vorp':'VORP','projected_minutes':'Minuti proiettati',
+    'model_xg90':'xG/90 modellato','model_xa90':'xA/90 modellato','canonical_value':'Valore Listone (riferimento)',
+    'canonical_value_source':'Fonte valore Listone','quotation':'Quotazione ufficiale','fvm_1000':'FVM 1000',
+    'independent_price_edge':'Edge modello vs mercato','independent_price_edge_conf_adj':'Edge corretto per confidenza'
+}
+
+ROLE_SHEETS={'P':'Portieri','D':'Difensori','C':'Centrocampisti','A':'Attaccanti'}
+
+
+def _export_frame(df:pd.DataFrame, columns:list[str])->pd.DataFrame:
+    use=[c for c in columns if c in df]
+    return df[use].copy().rename(columns=EXPORT_LABELS)
+
+
+def _excel_workbook(ranked:pd.DataFrame, filtered:pd.DataFrame, columns:list[str])->bytes:
+    buffer=io.BytesIO()
+    with pd.ExcelWriter(buffer,engine='openpyxl') as writer:
+        complete=ranked.sort_values('independent_score_v1',ascending=False,na_position='last')
+        _export_frame(complete,columns).to_excel(writer,index=False,sheet_name='Ranking completo')
+        _export_frame(filtered,columns).to_excel(writer,index=False,sheet_name='Vista filtrata')
+        for role,sheet in ROLE_SHEETS.items():
+            part=ranked[ranked.role.astype(str).str.upper().eq(role)].sort_values('independent_score_v1',ascending=False,na_position='last')
+            _export_frame(part,columns).to_excel(writer,index=False,sheet_name=sheet)
+    return buffer.getvalue()
+
+
 st.set_page_config(page_title='Ranking giocatori · Fanta Auction Lab', page_icon='📊', layout='wide')
 apply_theme(); common_sidebar()
-page_header('Ranking giocatori','Classifica indipendente costruita sulle regole della tua lega. FVM e mercato sono mostrati a valle solo per evidenziare divergenze e possibili inefficienze.','PLAYER INTELLIGENCE')
+page_header('Ranking giocatori','Classifica indipendente costruita sulle regole della tua lega. Il fair value del motore è separato da FVM, quotazione ufficiale e altri riferimenti di mercato.','PLAYER INTELLIGENCE')
 
 if 'rules' not in st.session_state: st.session_state.rules=LeagueRules()
 if 'players' not in st.session_state: st.session_state.players=pd.DataFrame()
@@ -26,10 +69,13 @@ k[0].metric('Listone ufficiale',len(ranked)); k[1].metric('Con predizione',predi
 
 list_tab, detail_tab, top_tab = st.tabs(['Classifica completa','Scheda giocatore','Top per ruolo'])
 with list_tab:
+    st.info('**Fair value motore (indipendente)** = prezzo in crediti stimato dal modello senza usare FVM, quotazione ufficiale o prezzi d’asta per costruire il valore. L’affidabilità è mostrata separatamente: anche le stime a bassa confidenza restano visibili se il motore riesce a calcolarle.')
     f1,f2,f3,f4,f5=st.columns([1,1,1.25,1.25,2])
     role=f1.selectbox('Ruolo',['Tutti','P','D','C','A'])
     min_rel=f2.slider('Affidabilità minima',0.0,1.0,0.0,.05)
-    sort=f3.selectbox('Ordina per',['independent_score_v1','independent_points','vorp','independent_fair_price','reliability','independent_price_edge_conf_adj'])
+    sort=f3.selectbox('Ordina per',['independent_score_v1','independent_points','vorp','independent_fair_price','reliability','independent_price_edge_conf_adj'],format_func=lambda x:{
+        'independent_score_v1':'Score motore','independent_points':'Punti attesi','vorp':'VORP','independent_fair_price':'Fair value motore (indip.)','reliability':'Affidabilità','independent_price_edge_conf_adj':'Edge adj.'
+    }.get(x,x))
     availability=f4.selectbox('Predizione',['Tutti','Disponibile','Non disponibile'])
     query=f5.text_input('Cerca giocatore o squadra',placeholder='es. Inter, Lautaro…')
     view=ranked.copy()
@@ -41,19 +87,36 @@ with list_tab:
         mask=view.player.astype(str).str.contains(query,case=False,na=False)
         if 'team' in view: mask|=view.team.astype(str).str.contains(query,case=False,na=False)
         view=view[mask]
-    cols=[c for c in ['player','team','role','prediction_status','prediction_confidence','prediction_reason','canonical_value','canonical_value_source','quotation','fvm_1000','independent_score_v1','independent_score_floor','independent_score_ceiling','independent_points','projected_points_p10','projected_points_p50','projected_points_p90','vorp','independent_fair_price','reliability','projected_minutes','model_xg90','model_xa90','independent_price_edge','independent_price_edge_conf_adj'] if c in view]
-    st.dataframe(view.sort_values(sort if sort in view else 'independent_score_v1',ascending=False)[cols],use_container_width=True,height=690,hide_index=True,column_config={
-        'player':'Giocatore','team':'Squadra','role':'R','prediction_confidence':'Confidenza','independent_score_v1':st.column_config.NumberColumn('Score',format='%.1f'),
+    cols=[c for c in RANKING_COLUMNS if c in view]
+    sort_col=sort if sort in view else 'independent_score_v1'
+    view_sorted=view.sort_values(sort_col,ascending=False,na_position='last')
+    st.dataframe(view_sorted[cols],use_container_width=True,height=690,hide_index=True,column_config={
+        'player':'Giocatore','team':'Squadra','role':'R','prediction_confidence':'Confidenza',
+        'independent_fair_price':st.column_config.NumberColumn('Fair value motore (indip.)',format='%.0f',help='Valore in crediti calcolato dal motore indipendente; FVM e quotazione ufficiale non entrano nella sua costruzione.'),
+        'independent_score_v1':st.column_config.NumberColumn('Score motore',format='%.1f'),
         'independent_score_floor':st.column_config.NumberColumn('Floor',format='%.1f'),'independent_score_ceiling':st.column_config.NumberColumn('Ceiling',format='%.1f'),
-        'canonical_value':st.column_config.NumberColumn('Valore canonico',format='%.1f'),'canonical_value_source':'Fonte valore canonico',
+        'canonical_value':st.column_config.NumberColumn('Valore Listone (riferimento)',format='%.1f'),'canonical_value_source':'Fonte valore Listone',
         'quotation':st.column_config.NumberColumn('Quotazione ufficiale',format='%.0f'),'fvm_1000':st.column_config.NumberColumn('FVM 1000',format='%.0f'),
-        'independent_points':st.column_config.NumberColumn('Punti',format='%.1f'),'vorp':st.column_config.NumberColumn('VORP',format='%.1f'),
-        'independent_fair_price':st.column_config.NumberColumn('Fair',format='%.0f'),'reliability':st.column_config.ProgressColumn('Affidabilità',min_value=0,max_value=1,format='%.0%%'),
+        'independent_points':st.column_config.NumberColumn('Punti attesi motore',format='%.1f'),'vorp':st.column_config.NumberColumn('VORP',format='%.1f'),
+        'reliability':st.column_config.ProgressColumn('Affidabilità',min_value=0,max_value=1,format='%.0%%'),
         'independent_price_edge_conf_adj':st.column_config.NumberColumn('Edge adj.',format='%+.1f')})
 
+    export_cols=st.columns(2)
+    filtered_export=_export_frame(view_sorted,cols)
+    export_cols[0].download_button(
+        'Scarica vista filtrata CSV',filtered_export.to_csv(index=False).encode('utf-8-sig'),
+        file_name='ranking_giocatori_filtrato.csv',mime='text/csv',use_container_width=True
+    )
+    export_cols[1].download_button(
+        'Scarica ranking completo Excel',_excel_workbook(ranked,view_sorted,[c for c in RANKING_COLUMNS if c in ranked]),
+        file_name='ranking_giocatori_completo.xlsx',
+        mime='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',use_container_width=True,
+        help='Contiene Ranking completo, Vista filtrata e un foglio separato per P, D, C e A.'
+    )
+
 with detail_tab:
-    section('Scheda giocatore','Separa produzione attesa, rischio, valore economico e confronto con il mercato.')
-    chosen=st.selectbox('Giocatore',ranked.sort_values('independent_score_v1',ascending=False).player.tolist(),key='ranking_detail_player')
+    section('Scheda giocatore','Separa produzione attesa, rischio, fair value indipendente del motore e riferimenti ufficiali/di mercato.')
+    chosen=st.selectbox('Giocatore',ranked.sort_values('independent_score_v1',ascending=False,na_position='last').player.tolist(),key='ranking_detail_player')
     row=ranked[ranked.player==chosen].iloc[0]
     has_prediction=bool(row.get('prediction_available',False))
     canonical=row.get('canonical_value')
@@ -61,16 +124,16 @@ with detail_tab:
     if not has_prediction:
         st.warning(f"**Il modello non può fare una valutazione indipendente per {chosen}.** {row.get('prediction_reason','Dati insufficienti')}. Come riferimento resta disponibile la valutazione canonica: **{canonical_text}**.")
     elif row.get('prediction_confidence')=='BASSA':
-        st.warning(f"**Valutazione indipendente a bassa confidenza.** {row.get('prediction_reason','Campione individuale limitato')}. Usala come intervallo prudenziale, non come prezzo puntuale certo.")
+        st.warning(f"**Valutazione indipendente a bassa confidenza.** {row.get('prediction_reason','Campione individuale limitato')}. Il fair value del motore resta visibile, ma va interpretato insieme all’intervallo e all’affidabilità.")
     a=st.columns(7)
     def metric_value(key,fmt):
         value=row.get(key)
         return format(float(value),fmt) if has_prediction and pd.notna(value) else '—'
-    a[0].metric('Score',metric_value('independent_score_v1','.1f'))
+    a[0].metric('Score motore',metric_value('independent_score_v1','.1f'))
     a[1].metric('Punti attesi',metric_value('independent_points','.1f'))
     a[2].metric('VORP',metric_value('vorp','.1f'))
-    a[3].metric('Fair price',metric_value('independent_fair_price','.0f'))
-    a[4].metric('Valore canonico',f"{float(canonical):.1f}" if pd.notna(canonical) else '—',help=row.get('canonical_value_source'))
+    a[3].metric('Fair value motore (indip.)',metric_value('independent_fair_price','.0f'),help='Valore in crediti prodotto dal motore indipendente, non dal FVM o dalla quotazione ufficiale.')
+    a[4].metric('Valore Listone',f"{float(canonical):.1f}" if pd.notna(canonical) else '—',help=row.get('canonical_value_source'))
     a[5].metric('Affidabilità',metric_value('reliability','.0%'),help=f"Classe: {row.get('prediction_confidence','—')}")
     a[6].metric('Minuti',metric_value('projected_minutes','.0f'))
     c1,c2=st.columns(2)
@@ -81,19 +144,19 @@ with detail_tab:
         if has_prediction: st.caption(f"xG/90 modellato: {row.get('model_xg90',0):.2f} · xA/90: {row.get('model_xa90',0):.2f}")
         else: st.caption('Distribuzione non calcolata: dati individuali insufficienti.')
     with c2:
-        section('Mercato vs modello')
-        comp=pd.DataFrame({'Voce':['Fair indipendente','Valore canonico Listone','Quotazione ufficiale','FVM su 1000','Edge','Edge corretto per confidenza'],'Valore':[row.get('independent_fair_price'),row.get('canonical_value'),row.get('quotation'),row.get('fvm_1000'),row.get('independent_price_edge'),row.get('independent_price_edge_conf_adj')]})
+        section('Mercato vs motore indipendente')
+        comp=pd.DataFrame({'Voce':['Fair value motore indipendente','Valore Listone','Quotazione ufficiale','FVM su 1000','Edge','Edge corretto per confidenza'],'Valore':[row.get('independent_fair_price'),row.get('canonical_value'),row.get('quotation'),row.get('fvm_1000'),row.get('independent_price_edge'),row.get('independent_price_edge_conf_adj')]})
         st.dataframe(comp,use_container_width=True,hide_index=True)
-        st.caption(f"{row.get('canonical_value_source','Valore canonico non disponibile')}. Il mercato non entra nella costruzione dello score: serve soltanto per il confronto finale o come riferimento quando il modello non può stimare.")
+        st.caption(f"{row.get('canonical_value_source','Valore Listone non disponibile')}. FVM, quotazione e mercato sono riferimenti a valle: non costruiscono il fair value indipendente del motore.")
 
 with top_tab:
-    section('Top 10 per ruolo')
+    section('Top 10 per ruolo','Il numero dopo “fair motore” è sempre il fair value indipendente, non il FVM.')
     cols=st.columns(4)
     for col,rr in zip(cols,['P','D','C','A']):
         top=ranked[ranked.role.astype(str).str.upper().eq(rr)&ranked.prediction_available.fillna(False)].sort_values('independent_score_v1',ascending=False).head(10)
         with col:
             st.markdown(f'**{rr}**')
             for i,(_,x) in enumerate(top.iterrows(),1):
-                st.caption(f"{i}. {x.player} · {x.independent_score_v1:.0f} · fair {x.independent_fair_price:.0f}")
+                st.caption(f"{i}. {x.player} · score {x.independent_score_v1:.0f} · fair motore {x.independent_fair_price:.0f}")
 
-st.caption('Cambiare bonus/malus, porta inviolata, modificatore difesa, budget, partecipanti o slot genera una classifica diversa.')
+st.caption('Cambiare bonus/malus, porta inviolata, modificatore difesa, budget, partecipanti o slot genera una classifica e un fair value indipendente diversi.')
