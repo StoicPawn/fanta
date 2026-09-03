@@ -12,6 +12,11 @@ def _n(df: pd.DataFrame, col: str, default=0.0) -> pd.Series:
         return pd.Series(default,index=df.index,dtype=float)
     return pd.to_numeric(df[col],errors='coerce').fillna(default)
 
+def _prediction_mask(df:pd.DataFrame)->pd.Series:
+    if 'prediction_available' not in df:
+        return pd.Series(True,index=df.index,dtype=bool)
+    return df['prediction_available'].fillna(False).astype(bool)
+
 
 def role_spend_envelopes(plan: TargetPlan, rules: LeagueRules, remaining_budget: float | None=None) -> pd.DataFrame:
     """Give soft spend corridors by role around the current optimal portfolio.
@@ -46,7 +51,7 @@ def plan_resilience(pool: pd.DataFrame, plan: TargetPlan, sold_players: set[str]
     sold_players=sold_players or set()
     if plan is None or plan.squad.empty:
         return pd.DataFrame()
-    available=pool[~pool.player.isin(sold_players)].copy()
+    available=pool[_prediction_mask(pool)&~pool.player.isin(sold_players)].copy()
     rows=[]
     for _,p in plan.squad.iterrows():
         role=str(p.role).upper(); pts=float(p.get('independent_points',0) or 0); price=float(p.get('target_price',p.get('independent_fair_price',1)) or 1)

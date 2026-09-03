@@ -5,11 +5,12 @@ from src.fanta_lab import cache
 from src.fanta_lab.source_registry import refresh_plan, registry_frame
 
 
-def test_registry_contains_critical_roster_and_market():
+def test_registry_makes_listone_canonical_and_roster_optional():
     r=registry_frame()
     assert 'football-data.org' in set(r.name)
     assert 'Fantacalcio.it/Listone' in set(r.name)
-    assert r[r.name.eq('football-data.org')].iloc[0].critical
+    assert r[r.name.eq('Fantacalcio.it/Listone')].iloc[0].critical
+    assert not r[r.name.eq('football-data.org')].iloc[0].critical
 
 
 def test_refresh_plan_flags_missing_critical_layers():

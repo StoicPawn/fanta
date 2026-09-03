@@ -9,11 +9,12 @@ from src.fanta_lab.sources.auction_market import load_real_auction_averages, att
 from src.fanta_lab.sources.football_data import FootballDataSource
 from src.fanta_lab.config import get_secret, secret_status
 from src.fanta_lab.source_registry import registry_frame
+from src.fanta_lab.projection import prediction_eligibility
 from src.fanta_lab.ui import apply_theme,page_header,section,common_sidebar
 
 st.set_page_config(page_title='Data Sources · Fanta Auction Lab',page_icon='🗄️',layout='wide')
 apply_theme(); common_sidebar()
-page_header('Data Sources','Costruisci il master Serie A con fonti gratuite, provenance esplicita e credenziali solo runtime.','DATA INGESTION')
+page_header('Data Sources','Il Listone ufficiale Fantacalcio definisce tutto l\'universo d\'asta; ogni altra fonte può soltanto arricchirne i giocatori.','DATA INGESTION')
 
 setup_tab, sources_tab, coverage_tab=st.tabs(['Costruisci dataset','Fonti disponibili','Copertura corrente'])
 
@@ -41,7 +42,7 @@ with setup_tab:
     a,b=st.columns(2)
     with a:
         season=int(st.number_input('Anno iniziale stagione',2020,2030,2026)); label=st.text_input('Stagione Fantacalcio','2026/27')
-        list_file=st.file_uploader('Listone corrente CSV/XLSX',type=['csv','xlsx','xls'],help='Raccomandato per fissare ruoli, quotazioni e FVM della piattaforma usata.')
+        list_file=st.file_uploader('Listone ufficiale corrente CSV/XLSX',type=['csv','xlsx','xls'],help='Fonte canonica: nessun giocatore assente da questo file entrerà nel dataset. Senza file l\'app prova a leggere la versione corrente da Fantacalcio.it.')
     with b:
         use_team=st.toggle('football-data.co.uk · team context',True); use_elo=st.toggle('ClubElo · forza squadra',True); use_dev=st.toggle('fantacalcio.dev · storico fantasy',True); use_fco=st.toggle('Fantacalcio-Online · cross-check',True); use_api=st.toggle('API-Football · dettaglio/infortuni',True); use_big=st.toggle('BigBalls · newcomers esteri',True)
     if st.button('COSTRUISCI DATASET MASSIMO',type='primary',use_container_width=True):
@@ -53,7 +54,7 @@ with setup_tab:
         except Exception as e: st.error(str(e))
 
 with sources_tab:
-    section('Registry fonti','Le fonti critiche costruiscono l’universo del gioco; gli enrichment migliorano proiezione, contesto o mercato.')
+    section('Registry fonti','Solo il Listone ufficiale costruisce l\'universo del gioco; tutti gli enrichment migliorano statistiche, contesto o mercato senza aggiungere giocatori.')
     reg=registry_frame(); st.dataframe(reg,use_container_width=True,hide_index=True,column_config={'priority':st.column_config.ProgressColumn('Priorità',min_value=0,max_value=100,format='%d'),'ttl_hours':st.column_config.NumberColumn('TTL h',format='%.1f')})
     st.caption('Kickest, Understat, ClubElo, OpenFootball, football-data.co.uk e archivi fantasy pubblici non richiedono una chiave privata nel flusso base.')
 
@@ -62,8 +63,14 @@ with coverage_tab:
     if not isinstance(df,pd.DataFrame) or df.empty:
         st.info('Costruisci prima il dataset per vedere la copertura reale.')
     else:
+        prediction_check=df.apply(prediction_eligibility,axis=1)
+        prediction_ok=prediction_check.map(lambda x:x[0])
+        display_df=df.copy()
+        display_df['prediction_status']=prediction_ok.map({True:'DISPONIBILE',False:'NON DISPONIBILE'})
+        display_df['prediction_reason']=prediction_check.map(lambda x:x[1])
         metrics={
             'Giocatori':len(df),'Squadre':df.team.nunique() if 'team' in df else 0,
+            'Con predizione':int(prediction_ok.sum()),'Dati insufficienti':int((~prediction_ok).sum()),
             'FVM/mercato':int(df.get('has_market_data',pd.Series(False,index=df.index)).fillna(False).sum()),
             'Storico Serie A':int(df.get('has_history',pd.Series(False,index=df.index)).fillna(False).sum()),
             'Storico estero':int(df.get('has_external_history',pd.Series(False,index=df.index)).fillna(False).sum()),
@@ -85,5 +92,5 @@ with coverage_tab:
                 market=load_real_auction_averages(); rules=st.session_state.get('rules'); managers=int(getattr(rules,'managers',8)); budget=int(getattr(rules,'budget',500))
                 st.session_state.players=attach_market_prior(df,market,managers,budget); st.session_state.pop('scored',None); st.success(f'Prior aste reali agganciato · {len(market)} righe sorgente'); st.rerun()
             except Exception as e: st.warning(f'Fonte aste non disponibile: {e}')
-        show=[c for c in ['player','team','role','fvm_1000','market_auction_price','minutes','xg','xa','dev_avg_vote','af_rating','currently_injured','external_minutes','team_attack_strength','team_defense_strength','team_elo','data_confidence'] if c in df]
-        st.dataframe(df[show].sort_values('data_confidence',ascending=False) if 'data_confidence' in show else df[show],use_container_width=True,height=610,hide_index=True,column_config={'data_confidence':st.column_config.ProgressColumn('Confidenza dati',min_value=0,max_value=1,format='%.0%%')})
+        show=[c for c in ['player','team','role','prediction_status','prediction_reason','fvm_1000','market_auction_price','minutes','xg','xa','dev_avg_vote','af_rating','currently_injured','external_minutes','team_attack_strength','team_defense_strength','team_elo','data_confidence'] if c in display_df]
+        st.dataframe(display_df[show].sort_values('data_confidence',ascending=False) if 'data_confidence' in show else display_df[show],use_container_width=True,height=610,hide_index=True,column_config={'data_confidence':st.column_config.ProgressColumn('Confidenza dati',min_value=0,max_value=1,format='%.0%%')})

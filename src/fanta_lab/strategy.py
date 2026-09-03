@@ -6,6 +6,11 @@ import pulp
 
 from .auction import AuctionState, live_recommendation
 
+def _prediction_mask(df:pd.DataFrame)->pd.Series:
+    if 'prediction_available' not in df:
+        return pd.Series(True,index=df.index,dtype=bool)
+    return df['prediction_available'].fillna(False).astype(bool)
+
 
 def expected_price(row: pd.Series, pool: pd.DataFrame, state: AuctionState, risk_tolerance: float=.58) -> float:
     rec = live_recommendation(row, pool, state, risk_tolerance=risk_tolerance)
@@ -23,7 +28,7 @@ def continuation_plan(pool: pd.DataFrame, state: AuctionState, risk_tolerance: f
     me = state.my_manager
     exclude = exclude or set()
     sold = {p.player for p in state.purchases}
-    avail = pool[(~pool.player.isin(sold | exclude))].copy()
+    avail = pool[_prediction_mask(pool) & (~pool.player.isin(sold | exclude))].copy()
     slots = state.slots_left(me).copy()
     budget = float(state.remaining(me))
     forced_points = 0.0
@@ -136,7 +141,7 @@ def role_budget_envelopes(pool: pd.DataFrame, state: AuctionState, risk_toleranc
         if need <= 0:
             rows.append({'role':role,'slots_left':0,'minimum_expected':0,'balanced_expected':0,'top_tier_expected':0})
             continue
-        g = pool[(pool.role==role)&(~pool.player.isin(sold))].copy()
+        g = pool[(pool.role==role)&_prediction_mask(pool)&(~pool.player.isin(sold))].copy()
         vals=[]
         for _,x in g.head(max(need*8,20)).iterrows():
             vals.append((float(x.get('independent_points',0) or 0), expected_price(x,pool,state,risk_tolerance)))

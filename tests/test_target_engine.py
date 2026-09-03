@@ -35,3 +35,18 @@ def test_replacements_exclude_called_and_sold():
     out=replacement_candidates(called,p,plan,rules,sold_players={'A1'},top_n=5)
     assert called.player not in set(out.player)
     assert 'A1' not in set(out.player)
+
+
+def test_target_plan_never_selects_unpredicted_player():
+    rules=LeagueRules(budget=200,managers=1,slots_gk=1,slots_def=3,slots_mid=2,slots_fwd=2,min_bid=1)
+    p=pool()
+    p['prediction_available']=True
+    ghost=p.iloc[0].copy()
+    ghost['player']='NoData'
+    ghost['role']='A'
+    ghost['prediction_available']=False
+    ghost['independent_score_v1']=1000
+    ghost['independent_points']=1000
+    ghost['independent_fair_price']=1
+    plan=build_target_plan(pd.concat([p,pd.DataFrame([ghost])],ignore_index=True),rules)
+    assert 'NoData' not in set(plan.squad.player)

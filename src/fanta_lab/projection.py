@@ -4,6 +4,7 @@ import pandas as pd
 from .models import LeagueRules
 
 ROLE_GOAL_FIELD={'P':'goal_gk','D':'goal_def','C':'goal_mid','A':'goal_fwd'}
+MIN_PREDICTION_MINUTES=90.0
 
 def _num(row,col,default=0.0):
     try:
@@ -16,12 +17,25 @@ def safe_rate(row,col,minutes_col='minutes'):
 def _external_rate(row,col):
     m=_num(row,'external_minutes',0); return _num(row,'external_'+col,0)*90/max(90,m) if m>0 else np.nan
 
+def prediction_eligibility(row:pd.Series)->tuple[bool,str]:
+    """Require observed player data; market values and role priors are not evidence."""
+    # Source-specific minutes are normalised into ``minutes`` by the pipeline.
+    hist=_num(row,'minutes',0)
+    ext=_num(row,'external_minutes',0)
+    observed=max(hist,ext)
+    if observed>=MIN_PREDICTION_MINUTES:
+        source='storico Serie A' if hist>=MIN_PREDICTION_MINUTES else 'storico estero'
+        return True,f'Dati sufficienti ({source}: {observed:.0f} minuti)'
+    if observed>0:
+        return False,f'Dati insufficienti: solo {observed:.0f} minuti osservati; minimo richiesto {MIN_PREDICTION_MINUTES:.0f}'
+    return False,'Dati insufficienti: nessuno storico individuale con minutaggio disponibile'
+
 def estimate_minutes(row:pd.Series)->tuple[float,float,str]:
     """Estimate season minutes without fantasy-market information.
 
     FVM/quotation are intentionally excluded.  The independent model can use observed
-    football history, foreign history, explicit starting probability and availability;
-    when none exist it falls back to a conservative role prior with low confidence.
+    football history, foreign history, explicit starting probability and availability.
+    The caller rejects insufficient observed data instead of falling back to a role prior.
     """
     if pd.notna(row.get('projected_minutes',np.nan)):
         pm=float(row['projected_minutes']); return float(np.clip(pm,0,3420)),.95,'manual'
@@ -43,20 +57,19 @@ def estimate_minutes(row:pd.Series)->tuple[float,float,str]:
         league_factor=float(np.clip(_num(row,'external_league_factor',.88),.55,1.15)); prior=np.clip(ext*.92*league_factor,350,3000)*availability
         if not np.isnan(start_prob):prior=.60*prior+.40*(3420*np.clip(start_prob,0,1))
         return float(prior),float(min(.72,.35+ext/6500)),'external_history'+('+'+injury_src if injury_src else '')
-    role=str(row.get('role','C')).upper()
-    role_prior={'P':1650.0,'D':1450.0,'C':1450.0,'A':1350.0}.get(role,1400.0)
-    pm=role_prior*availability
-    if not np.isnan(start_prob):
-        pm=.35*pm+.65*(3420*np.clip(start_prob,0,1))*availability
-        conf=.38
-        src='starting_probability_prior'
-    else:
-        conf=.22
-        src='role_prior_no_history'
-    if injury_src:src+='+'+injury_src
-    return float(np.clip(pm,250,2850)),conf,src
+    return np.nan,np.nan,'insufficient_data'
 
 def project_player(row:pd.Series,rules:LeagueRules)->dict:
+    available,reason=prediction_eligibility(row)
+    if not available:
+        return {
+            'prediction_available':False,'prediction_status':'NON DISPONIBILE','prediction_reason':reason,
+            'projected_minutes':np.nan,'minutes_confidence':np.nan,'minutes_source':None,
+            'pred_goal90':np.nan,'pred_assist90':np.nan,'independent_points':np.nan,
+            'projected_points_p10':np.nan,'projected_points_p50':np.nan,'projected_points_p90':np.nan,
+            'reliability':np.nan,'modifier_marginal':np.nan,'vote_points':np.nan,'bonus_points':np.nan,
+            'team_context_factor':np.nan,'team_defense_factor':np.nan,'schedule_factor_used':np.nan,
+        }
     role=str(row.get('role','C')).upper(); pm,min_conf,min_src=estimate_minutes(row); apps90=pm/90; hist=_num(row,'minutes'); ext=_num(row,'external_minutes')
     goals90,assists90=safe_rate(row,'goals'),safe_rate(row,'assists'); xg90,xa90=safe_rate(row,'xg'),safe_rate(row,'xa')
     if hist<=0 and ext>0:
@@ -79,7 +92,7 @@ def project_player(row:pd.Series,rules:LeagueRules)->dict:
     modifier=0.0
     total=vote_points+goal_pts+assist_pts+card_pts+own_goal_pts+clean_pts+conceded_pts+saved_pen_pts+penalty_miss_pts
     data_conf=_num(row,'data_confidence',.35); reliability=float(np.clip(.55*min_conf+.45*data_conf,0,1)); uncertainty=max(6.0,abs(total)*(.08+.28*(1-reliability))); p10=total-1.2816*uncertainty; p90=total+1.2816*uncertainty
-    return {'projected_minutes':pm,'minutes_confidence':min_conf,'minutes_source':min_src,'pred_goal90':pred_g90,'pred_assist90':pred_a90,'independent_points':total,'projected_points_p10':p10,'projected_points_p50':total,'projected_points_p90':p90,'reliability':reliability,'modifier_marginal':modifier,'vote_points':vote_points,'bonus_points':total-vote_points,'team_context_factor':attack_strength,'team_defense_factor':defense_strength,'schedule_factor_used':schedule}
+    return {'prediction_available':True,'prediction_status':'DISPONIBILE','prediction_reason':reason,'projected_minutes':pm,'minutes_confidence':min_conf,'minutes_source':min_src,'pred_goal90':pred_g90,'pred_assist90':pred_a90,'independent_points':total,'projected_points_p10':p10,'projected_points_p50':total,'projected_points_p90':p90,'reliability':reliability,'modifier_marginal':modifier,'vote_points':vote_points,'bonus_points':total-vote_points,'team_context_factor':attack_strength,'team_defense_factor':defense_strength,'schedule_factor_used':schedule}
 
 def add_projections(df:pd.DataFrame,rules:LeagueRules)->pd.DataFrame:
     rows=[project_player(r,rules) for _,r in df.iterrows()]; return pd.concat([df.reset_index(drop=True),pd.DataFrame(rows)],axis=1)

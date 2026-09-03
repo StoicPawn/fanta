@@ -8,7 +8,7 @@ from src.fanta_lab.ui import apply_theme,page_header,section,common_sidebar
 
 st.set_page_config(page_title='Fanta Auction Lab',page_icon='⚽',layout='wide')
 apply_theme(); common_sidebar()
-page_header('Fanta Auction Lab','Valutazione indipendente, rosa-obiettivo e guida live all’asta. Il prodotto separa sempre prestazione sportiva, mercato fantasy e comportamento reale della stanza.','SERIE A AUCTION INTELLIGENCE')
+page_header('Fanta Auction Lab','Il Listone ufficiale Fantacalcio è l\'universo unico dell\'asta; statistiche esterne, valutazione indipendente e comportamento della stanza lo arricchiscono senza alterarlo.','SERIE A AUCTION INTELLIGENCE')
 
 if 'rules' not in st.session_state: st.session_state.rules=LeagueRules()
 if 'players' not in st.session_state: st.session_state.players=pd.DataFrame()
@@ -28,7 +28,7 @@ section('Flusso operativo','Quattro passaggi principali; gli altri moduli servon
 cols=st.columns(4)
 with cols[0]:
     st.markdown('### 1 · Data Sources')
-    st.caption('Costruisci e certifica il master Serie A con tutte le fonti gratuite disponibili.')
+    st.caption('Carica e certifica il Listone ufficiale, poi arricchiscilo con le altre fonti disponibili.')
     st.page_link('pages/7_Data_Sources.py',label='Apri Data Sources',icon='🗄️')
 with cols[1]:
     st.markdown('### 2 · Formazione')

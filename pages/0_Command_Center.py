@@ -29,7 +29,7 @@ if st.session_state.players.empty:
 r=st.session_state.rules; names=st.session_state.manager_names[:r.managers]
 while len(names)<r.managers: names.append(f'Avversario {len(names)}')
 if st.session_state.my_manager not in names: st.session_state.my_manager=names[0]
-pool=build_independent_valuation(st.session_state.players.copy(),r); pool['fair_price']=pd.to_numeric(pool.independent_fair_price,errors='coerce').fillna(r.min_bid); st.session_state.scored=pool
+pool=build_independent_valuation(st.session_state.players.copy(),r); pool['fair_price']=pd.to_numeric(pool.independent_fair_price,errors='coerce'); st.session_state.scored=pool
 state=AuctionState(r,names,st.session_state.my_manager)
 for p in st.session_state.purchases:
     try: state.add_purchase(p if isinstance(p,AuctionPurchase) else AuctionPurchase(**p))
@@ -46,27 +46,31 @@ with live_tab:
     if available.empty: st.success('Asta completata: nessun giocatore disponibile.')
     else:
         a,b=st.columns([3.2,1]); called_name=a.selectbox('Giocatore chiamato',available.sort_values('independent_score_v1',ascending=False).player.tolist()); risk=b.slider('Aggressività',0.,1.,.58,.05,help='Quanto accettare il rischio di pagare sopra fair quando aspettare può costare una fascia intera.')
-        called=available[available.player==called_name].iloc[0]; rec=live_recommendation(called,pool,state,risk_tolerance=risk); in_plan=called_name in set(plan.squad.player) if not plan.squad.empty else False
+        called=available[available.player==called_name].iloc[0]; rec=live_recommendation(called,pool,state,risk_tolerance=risk); in_plan=called_name in set(plan.squad.player) if not plan.squad.empty else False; has_prediction=bool(called.get('prediction_available',False))
         x=st.columns(7)
-        x[0].metric('MAX BID',rec['max_bid']); x[1].metric('Clearing',rec['expected_clearing']); x[2].metric('P80 stanza',rec['clearing_p80']); x[3].metric('Fair indip.',f"{called.independent_fair_price:.1f}"); x[4].metric('Score',f"{called.independent_score_v1:.1f}"); x[5].metric('Shortage',f"{rec.get('shortage_risk',0):.0%}"); x[6].metric('Nel piano','SÌ' if in_plan else 'NO')
-        if rec['decision']=='PUSH_IF_NEEDED': st.warning('**PUSH IF NEEDED** · aspettare rischia di degradare il piano finale.')
-        elif rec['decision'] in {'TARGET','BUY_AT_MARKET'}: st.success(f"**{rec['decision']}** · il prezzo è compatibile con la strategia corrente.")
-        else: st.info(f"**{rec['decision']}** · valuta le alternative prima di inseguire il prezzo.")
-        st.progress(min(1.0,float(rec.get('urgency',0))/1.75),text=f"Urgenza {rec.get('urgency',0):.2f} · comparabili rimasti {rec.get('better_or_equal_left','—')} · pressione fascia {rec.get('tier_pressure',1):.2f}×")
+        x[0].metric('MAX BID',rec['max_bid'] if rec['max_bid'] is not None else '—'); x[1].metric('Clearing',rec['expected_clearing'] if rec['expected_clearing'] is not None else '—'); x[2].metric('P80 stanza',rec.get('clearing_p80') if rec.get('clearing_p80') is not None else '—'); x[3].metric('Fair indip.',f"{called.independent_fair_price:.1f}" if has_prediction else '—'); x[4].metric('Score',f"{called.independent_score_v1:.1f}" if has_prediction else '—'); x[5].metric('Shortage',f"{rec.get('shortage_risk',0):.0%}" if rec.get('shortage_risk') is not None else '—'); x[6].metric('Nel piano','SÌ' if in_plan else 'NO')
+        if not has_prediction:
+            st.warning(f"**Il modello non può fare una predizione per {called_name}.** {called.get('prediction_reason','Dati insufficienti')}. Il giocatore resta nel Listone e puoi registrare normalmente la vendita, ma MAX BID, fair value e sostituti quantitativi non vengono inventati.")
+        else:
+            if rec['decision']=='PUSH_IF_NEEDED': st.warning('**PUSH IF NEEDED** · aspettare rischia di degradare il piano finale.')
+            elif rec['decision'] in {'TARGET','BUY_AT_MARKET'}: st.success(f"**{rec['decision']}** · il prezzo è compatibile con la strategia corrente.")
+            else: st.info(f"**{rec['decision']}** · valuta le alternative prima di inseguire il prezzo.")
+            st.progress(min(1.0,float(rec.get('urgency',0))/1.75),text=f"Urgenza {rec.get('urgency',0):.2f} · comparabili rimasti {rec.get('better_or_equal_left','—')} · pressione fascia {rec.get('tier_pressure',1):.2f}×")
 
-        section('Sostituti immediati','Se perdi il giocatore, il motore distingue alternative che preservano fascia, alternative value e soluzioni di emergenza affidabili.')
-        repl=replacement_candidates(called,pool,plan,r,sold_players=sold,top_n=18); buckets=alternative_buckets(called,repl)
-        t1,t2,t3=st.tabs(['Stessa fascia','Valore/prezzo','Emergenza'])
-        for tab,key in [(t1,'same_tier'),(t2,'value'),(t3,'emergency')]:
-            with tab:
-                if buckets[key].empty: st.caption('Nessuna alternativa in questa categoria.')
-                else: st.dataframe(buckets[key],use_container_width=True,hide_index=True,height=310)
+            section('Sostituti immediati','Se perdi il giocatore, il motore distingue alternative che preservano fascia, alternative value e soluzioni di emergenza affidabili.')
+            repl=replacement_candidates(called,pool,plan,r,sold_players=sold,top_n=18); buckets=alternative_buckets(called,repl)
+            t1,t2,t3=st.tabs(['Stessa fascia','Valore/prezzo','Emergenza'])
+            for tab,key in [(t1,'same_tier'),(t2,'value'),(t3,'emergency')]:
+                with tab:
+                    if buckets[key].empty: st.caption('Nessuna alternativa in questa categoria.')
+                    else: st.dataframe(buckets[key],use_container_width=True,hide_index=True,height=310)
 
         section('Registra la vendita')
         c=st.columns([1.2,2.2,.8,2.3]); buyer=c[0].selectbox('Acquirente',names); options=available.player.tolist(); bought=c[1].selectbox('Giocatore',options,index=options.index(called_name)); price=int(c[2].number_input('Prezzo',r.min_bid,r.budget,r.min_bid)); note=c[3].text_input('Nota rapida',placeholder='es. aggressivo sui top A')
         if st.button('REGISTRA · RICALCOLA TUTTO',type='primary',use_container_width=True):
             brow=pool[pool.player==bought].iloc[0]; brec=live_recommendation(brow,pool,state,risk_tolerance=risk); market=brow.get('market_auction_price',None); market=float(market) if market is not None and pd.notna(market) else None
-            st.session_state.purchases.append(AuctionPurchase(buyer,bought,str(brow.role),float(price),float(brow.fair_price),market,float(brec['expected_clearing']),note)); st.rerun()
+            fair=float(brow.fair_price) if pd.notna(brow.get('fair_price')) else None; clearing=float(brec['expected_clearing']) if brec.get('expected_clearing') is not None else None
+            st.session_state.purchases.append(AuctionPurchase(buyer,bought,str(brow.role),float(price),fair,market,clearing,note)); st.rerun()
 
 with plan_tab:
     if plan.squad.empty: st.error('Nessuna rosa completa fattibile ai prezzi correnti.')

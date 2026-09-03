@@ -25,6 +25,11 @@ def _num(df: pd.DataFrame, col: str, default=0.0) -> pd.Series:
         return pd.Series(default, index=df.index, dtype=float)
     return pd.to_numeric(df[col], errors='coerce').fillna(default)
 
+def _prediction_mask(df:pd.DataFrame)->pd.Series:
+    if 'prediction_available' not in df:
+        return pd.Series(True,index=df.index,dtype=bool)
+    return df['prediction_available'].fillna(False).astype(bool)
+
 
 def _modifier_quality(df: pd.DataFrame) -> pd.Series:
     vote = _num(df, 'avg_vote', 6.0).clip(5.0, 7.5)
@@ -83,7 +88,8 @@ def build_target_plan(df: pd.DataFrame, rules: LeagueRules, budget: float | None
     sold_players=sold_players or set()
     locked=locked or []
     locked_names={p.player for p in locked}
-    d=df[~df.player.isin(sold_players-locked_names)].copy().reset_index(drop=True)
+    eligible=_prediction_mask(df) | df.player.isin(locked_names)
+    d=df[eligible & ~df.player.isin(sold_players-locked_names)].copy().reset_index(drop=True)
     d['role']=d.role.astype(str).str.upper()
     d['plan_price']=_candidate_price(d).clip(lower=rules.min_bid)
     d['points']=_num(d,'independent_points',0)
@@ -140,7 +146,7 @@ def replacement_candidates(called: pd.Series, pool: pd.DataFrame, plan: TargetPl
     sold_players=sold_players or set()
     role=str(called.get('role','')).upper()
     target_names=set(plan.squad.player) if plan and not plan.squad.empty else set()
-    candidates=pool[(pool.role.astype(str).str.upper()==role) & ~pool.player.isin(sold_players) & (pool.player!=called.get('player'))].copy()
+    candidates=pool[(pool.role.astype(str).str.upper()==role) & _prediction_mask(pool) & ~pool.player.isin(sold_players) & (pool.player!=called.get('player'))].copy()
     if candidates.empty:return candidates
     candidates['points']=_num(candidates,'independent_points',0)
     candidates['score']=_num(candidates,'independent_score_v1',50)

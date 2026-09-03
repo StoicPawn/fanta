@@ -35,7 +35,7 @@ state=AuctionState(rules,st.session_state.manager_names[:rules.managers],st.sess
 for p in st.session_state.purchases:
     try: state.add_purchase(p if isinstance(p,AuctionPurchase) else AuctionPurchase(**p))
     except Exception: pass
-sold={p.player for p in state.purchases}; available=pool[~pool.player.isin(sold)].copy(); me=state.my_manager
+sold={p.player for p in state.purchases}; predicted=pool['prediction_available'].fillna(False) if 'prediction_available' in pool else pd.Series(True,index=pool.index); available=pool[predicted&~pool.player.isin(sold)].copy(); me=state.my_manager
 
 c=st.columns(5)
 c[0].metric('Budget residuo',f'{state.remaining(me):.0f}'); c[1].metric('Discrezionale',f'{state.discretionary_budget(me):.0f}'); c[2].metric('Slot',sum(state.slots_left(me).values())); c[3].metric('Inflazione',f'{state.inflation():.2f}×'); c[4].metric('Calibrazione',f'{state.forecast_calibration():.2f}×')
@@ -43,6 +43,8 @@ c[0].metric('Budget residuo',f'{state.remaining(me):.0f}'); c[1].metric('Discrez
 scenario_tab, budget_tab, continuation_tab, export_tab=st.tabs(['BUY vs WAIT','Budget per ruolo','Piano di continuazione','Snapshot'])
 with scenario_tab:
     section('Decisione sul giocatore chiamato','Il modello confronta la miglior rosa raggiungibile comprando ora con la miglior rosa raggiungibile aspettando.')
+    excluded=int((~predicted&~pool.player.isin(sold)).sum())
+    if excluded: st.caption(f'{excluded} giocatori del Listone non compaiono negli scenari quantitativi perché i dati non sono sufficienti per una predizione.')
     a,b=st.columns([3,1]); risk=b.slider('Aggressività strategica',0.0,1.0,.58,.05); player=a.selectbox('Giocatore',available.sort_values('independent_score_v1' if 'independent_score_v1' in available else 'independent_points',ascending=False).player.tolist())
     if player:
         row=available[available.player==player].iloc[0]; rec=live_recommendation(row,pool,state,risk); scenario=buy_vs_wait(row,pool,state,risk)

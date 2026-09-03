@@ -34,13 +34,23 @@ def _merge_team_source(master,source,threshold=82):
 
 def build_dataset(season_start_year:int,fanta_season_label:str,football_token=None,fantasy_df=None,stats_years=None,require_current_fanta=True,bigballs_token=None,api_football_token=None,use_public_team_context=True,use_clubelo=True,use_openfootball_schedule=True,use_fco_history=True,use_fantacalcio_dev_history=True,use_big_five_newcomer_history=True,use_api_football=True,use_kickest=True):
     football_token=football_token or os.getenv('FOOTBALL_DATA_TOKEN'); api_football_token=api_football_token or os.getenv('API_FOOTBALL_TOKEN'); bigballs_token=bigballs_token or os.getenv('BIGBALLS_TOKEN')
-    roster=FootballDataSource(football_token).serie_a_squads(season_start_year); roster['role']=roster['position_raw'].map(ROLE_MAP)
     if fantasy_df is None:
         try: fantasy_df=FantacalcioPublicSource().fetch(fanta_season_label)
         except Exception:
             if require_current_fanta:raise
             fantasy_df=pd.DataFrame()
-    master,report=build_master_roster(roster,fantasy_df); report.notes.append('Roster authority: football-data.org + current fantasy list reconciliation.'); years=stats_years or (season_start_year-1,season_start_year-2,season_start_year-3)
+    if require_current_fanta and (fantasy_df is None or fantasy_df.empty):
+        raise RuntimeError('Listone Fantacalcio ufficiale assente o vuoto: impossibile costruire l\'universo d\'asta.')
+    roster=pd.DataFrame(); roster_error=None
+    try:
+        roster=FootballDataSource(football_token).serie_a_squads(season_start_year)
+        if len(roster): roster['role']=roster['position_raw'].map(ROLE_MAP)
+    except Exception as e:
+        roster_error=type(e).__name__
+    master,report=build_master_roster(roster,fantasy_df)
+    report.notes.append('Universo canonico: solo Listone ufficiale Fantacalcio; football-data.org e tutte le altre fonti sono enrichment.')
+    if roster_error: report.notes.append(f'football-data.org unavailable: {roster_error}; il Listone resta comunque completo e utilizzabile.')
+    years=stats_years or (season_start_year-1,season_start_year-2,season_start_year-3)
     hist=[]
     for y in years:
         try: x=UnderstatSource().league_players(y); x['season']=y; hist.append(x)
@@ -96,6 +106,11 @@ def build_dataset(season_start_year:int,fanta_season_label:str,football_token=No
     if api_football_token and use_api_football:
         try:
             af=APIFootballSource(api_football_token); ap=af.players(season_start_year-1); master,unmatched=fuzzy_join(master,ap,'_af',90) if len(ap) else (master,[])
+            fills={'minutes':'af_minutes','goals':'af_goals','assists':'af_assists','shots':'af_shots','key_passes':'af_key_passes','yellow_cards':'af_yellow','red_cards':'af_red'}
+            for dst,src in fills.items():
+                if src in master:
+                    if dst not in master: master[dst]=pd.NA
+                    master[dst]=pd.to_numeric(master[dst],errors='coerce').fillna(pd.to_numeric(master[src],errors='coerce'))
         except Exception as e:report.notes.append(f'API-Football unavailable: {type(e).__name__}')
     elif use_api_football: report.notes.append('API-Football skipped: no token.')
     if bigballs_token and use_big_five_newcomer_history:
@@ -103,6 +118,6 @@ def build_dataset(season_start_year:int,fanta_season_label:str,football_token=No
             b=BigBallsSource(bigballs_token).big_five_history(list(years)); master,unmatched=fuzzy_join(master,b,'_bigfive',90) if len(b) else (master,[])
         except Exception as e:report.notes.append(f'BigBalls unavailable: {type(e).__name__}')
     elif use_big_five_newcomer_history: report.notes.append('BigBalls skipped: no token.')
-    master['has_market_data']=master.get('fvm_1000',pd.Series(index=master.index,dtype=float)).notna(); master['has_history']=pd.to_numeric(master.get('minutes',0),errors='coerce').fillna(0).gt(0) if 'minutes' in master else False; master['has_kickest']=master.get('kickest_source',pd.Series(index=master.index,dtype=object)).notna(); master['has_team_context']=master.get('team_attack_strength',pd.Series(index=master.index,dtype=float)).notna(); master['has_clubelo']=master.get('team_elo',pd.Series(index=master.index,dtype=float)).notna(); master['has_schedule_context']=master.get('schedule_ease_factor',pd.Series(index=master.index,dtype=float)).notna(); master['has_fantasy_history']=master.get('dev_avg_vote',master.get('fco_avg_vote',pd.Series(index=master.index,dtype=float))).notna(); master['has_api_football']=master.get('api_football_player_id',pd.Series(index=master.index,dtype=float)).notna()
+    master['has_market_data']=master.get('fvm_1000',pd.Series(index=master.index,dtype=float)).notna(); master['has_history']=pd.to_numeric(master.get('minutes',0),errors='coerce').fillna(0).gt(0) if 'minutes' in master else False; master['has_external_history']=pd.to_numeric(master.get('external_minutes',0),errors='coerce').fillna(0).gt(0) if 'external_minutes' in master else False; master['has_kickest']=master.get('kickest_source',pd.Series(index=master.index,dtype=object)).notna(); master['has_team_context']=master.get('team_attack_strength',pd.Series(index=master.index,dtype=float)).notna(); master['has_clubelo']=master.get('team_elo',pd.Series(index=master.index,dtype=float)).notna(); master['has_schedule_context']=master.get('schedule_ease_factor',pd.Series(index=master.index,dtype=float)).notna(); master['has_fantasy_history']=master.get('dev_avg_vote',master.get('fco_avg_vote',pd.Series(index=master.index,dtype=float))).notna(); master['has_api_football']=master.get('api_football_player_id',pd.Series(index=master.index,dtype=float)).notna()
     master['data_confidence']=(.14+.20*master.has_market_data.astype(float)+.18*master.has_history.astype(float)+.14*master.has_kickest.astype(float)+.08*master.has_team_context.astype(float)+.05*master.has_clubelo.astype(float)+.03*master.has_schedule_context.astype(float)+.10*master.has_fantasy_history.astype(float)+.08*master.has_api_football.astype(float)).clip(0,1)
     return master,report
