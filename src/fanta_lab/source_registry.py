@@ -8,6 +8,7 @@ class SourceSpec:
 
 SOURCES=(
  SourceSpec('Fantacalcio.it/Listone','canonical-auction-universe','public-or-user-file',6*3600,100,True,('player','team','role','quotation','fvm_1000')),
+ SourceSpec('Fantacalcio.it/Statistiche','current-season-performance','public',6*3600,96,False,('current_appearances','current_avg_vote','current_goals','current_assists')),
  SourceSpec('football-data.org','roster-enrichment','free-token',6*3600,92,False,('source_player_id','position_raw','date_of_birth')),
  SourceSpec('Kickest','detailed-serie-a-stats','public',24*3600,94,False,('kickest_minutes','kickest_starts','kickest_shots','kickest_shots_on','kickest_key_passes','kickest_tackles','kickest_saves')),
  SourceSpec('Understat','expected-stats','public',7*24*3600,90,False,('minutes','xg','xa','npxg','xg_chain','xg_buildup')),

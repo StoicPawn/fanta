@@ -19,7 +19,7 @@ A shared UI design system (`src/fanta_lab/ui.py`) keeps headers, metrics, tables
 
 ## Independent valuation
 
-The independent model is deliberately isolated from FVM/quotation/auction prices. Sporting score is built first from expected fantasy points, minutes/availability, expected production, replacement scarcity, context and data confidence. Market information is attached afterwards only to calculate disagreement/edge. If a player has fewer than 90 observed minutes across the supported individual-stat sources, the model does not fabricate a role-prior prediction: score, points, fair price and MAX BID remain unavailable and the UI shows the reason explicitly. The official Listone valuation is still reported separately: FVM is scaled from 1,000 credits to the configured league budget, with the official quotation shown as a fallback when FVM is unavailable.
+The independent model is deliberately isolated from FVM/quotation/auction prices. Sporting score is built first from expected fantasy points, minutes/availability, expected production, replacement scarcity, context and data confidence. Market information is attached afterwards only to calculate disagreement/edge. Historical minutes are preferred; fantasy history and official current-season appearances can provide additional individual evidence. Very small current-season samples are strongly shrunk and explicitly labelled **low confidence**. If no supported individual evidence exists, the model does not fabricate a prediction: score, points, fair price and MAX BID remain unavailable and the UI shows the reason explicitly. The official Listone valuation is still reported separately: FVM is scaled from 1,000 credits to the configured league budget, with the official quotation shown as a fallback when FVM is unavailable.
 
 The ranking is league-specific. Changing clean-sheet points, goals conceded, cards, penalty rules, roster slots, budget or defence modifier changes projected points, replacement levels, fair prices and the recommended target squad.
 
@@ -46,6 +46,7 @@ Therefore MAX BID is not a static ceiling. It can rise above model fair value wh
 ## Real-data sources wired into the engine
 
 - **Fantacalcio.it / official user Listone** — the only canonical auction universe, plus official role, quotation and FVM.
+- **Fantacalcio.it current statistics** — official current-season appearances, average/fantasy vote, goals, assists and discipline; opening-match samples are down-weighted and labelled low confidence.
 - **football-data.org** — optional current Serie A squad enrichment. It cannot add players outside the Listone. Free token.
 - **Kickest public Serie A statistics** — detailed player production such as appearances, starts, minutes, goals, shots, shots on target, penalties, assists, key passes, discipline, recoveries, tackles, clean sheets and saves when publicly exposed.
 - **Understat** — historical minutes, goals, assists, shots, key passes, xG, xA, npxG, xGChain and xGBuildup.
@@ -74,7 +75,19 @@ The official Fantacalcio Listone and enrichment remain strictly separate. Every 
 
 No public downloadable corpus of millions of raw Italian fantasy-auction transactions is assumed. Auction behaviour is therefore learned from public aggregate real-auction prices, the current room's observed sales, self-calibration and simulated heterogeneous bidders.
 
-## Run
+## Windows: download and start
+
+1. Open <https://github.com/StoicPawn/fanta> and select **Code → Download ZIP**.
+2. Extract the ZIP completely, for example into `C:\FantaAuctionLab`. Do not run it from inside the compressed folder.
+3. Install **Python 3.12 (64-bit)** from <https://www.python.org/downloads/windows/>. During setup enable **Add python.exe to PATH**.
+4. Double-click `install_windows.bat` once and wait for the completion message.
+5. Double-click `run_windows.bat`. Streamlit opens the app in the default browser, normally at `http://localhost:8501`.
+
+On first use, configure the league on the home page, then open **Data Sources**. Choose **Rapido** to test the application immediately with the official Listone and current-season statistics, or **Completo** to add all enabled historical/context sources. The current official Listone is downloaded automatically; alternatively upload the current official CSV/XLSX. Continue with **Ranking giocatori** and finally **Command Center**.
+
+To stop the local app, return to its black terminal window and press `Ctrl+C`. Subsequent starts require only `run_windows.bat`.
+
+## Run from a terminal
 
 ```bash
 python -m venv .venv

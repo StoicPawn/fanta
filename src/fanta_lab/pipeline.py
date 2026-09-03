@@ -3,7 +3,7 @@ import os
 import pandas as pd
 from .reconcile import build_master_roster, fuzzy_join
 from .sources.football_data import FootballDataSource
-from .sources.fantacalcio import FantacalcioPublicSource
+from .sources.fantacalcio import FantacalcioPublicSource, FantacalcioCurrentStatsSource
 from .sources.understat import UnderstatSource
 from .sources.kickest import KickestSource
 from .sources.football_data_uk import FootballDataUKSource
@@ -13,6 +13,7 @@ from .sources.fantacalcio_dev import FantacalcioDevSource
 from .sources.api_football import APIFootballSource
 from .sources.clubelo import ClubEloSource
 from .sources.openfootball import OpenFootballItalySource, schedule_difficulty
+from .projection import prediction_eligibility
 
 ROLE_MAP={'Goalkeeper':'P','Defender':'D','Midfielder':'C','Offence':'A','Attacker':'A','Forward':'A'}
 
@@ -32,7 +33,7 @@ def _merge_team_source(master,source,threshold=82):
     if source.empty or 'team' not in source:return master
     teams=pd.DataFrame({'player':master['team'].dropna().astype(str).unique()}); src=source.rename(columns={'team':'player'}); joined,_=fuzzy_join(teams,src,'_teamsrc',threshold); joined=joined.rename(columns={'player':'team'}); return master.merge(joined.drop_duplicates('team'),on='team',how='left')
 
-def build_dataset(season_start_year:int,fanta_season_label:str,football_token=None,fantasy_df=None,stats_years=None,require_current_fanta=True,bigballs_token=None,api_football_token=None,use_public_team_context=True,use_clubelo=True,use_openfootball_schedule=True,use_fco_history=True,use_fantacalcio_dev_history=True,use_big_five_newcomer_history=True,use_api_football=True,use_kickest=True):
+def build_dataset(season_start_year:int,fanta_season_label:str,football_token=None,fantasy_df=None,stats_years=None,require_current_fanta=True,bigballs_token=None,api_football_token=None,use_public_team_context=True,use_clubelo=True,use_openfootball_schedule=True,use_fco_history=True,use_fantacalcio_dev_history=True,use_big_five_newcomer_history=True,use_api_football=True,use_kickest=True,use_current_fantacalcio_stats=True,use_understat=True):
     football_token=football_token or os.getenv('FOOTBALL_DATA_TOKEN'); api_football_token=api_football_token or os.getenv('API_FOOTBALL_TOKEN'); bigballs_token=bigballs_token or os.getenv('BIGBALLS_TOKEN')
     if fantasy_df is None:
         try: fantasy_df=FantacalcioPublicSource().fetch(fanta_season_label)
@@ -50,11 +51,22 @@ def build_dataset(season_start_year:int,fanta_season_label:str,football_token=No
     master,report=build_master_roster(roster,fantasy_df)
     report.notes.append('Universo canonico: solo Listone ufficiale Fantacalcio; football-data.org e tutte le altre fonti sono enrichment.')
     if roster_error: report.notes.append(f'football-data.org unavailable: {roster_error}; il Listone resta comunque completo e utilizzabile.')
+    if use_current_fantacalcio_stats:
+        try:
+            current=FantacalcioCurrentStatsSource().fetch(fanta_season_label)
+            if len(current):
+                master,unmatched=fuzzy_join(master,current,'_current',96)
+                report.notes.append(f'Fantacalcio statistiche correnti: {len(current)} righe; {len(unmatched)} non abbinate.')
+        except Exception as e:
+            report.notes.append(f'Fantacalcio statistiche correnti unavailable: {type(e).__name__}')
     years=stats_years or (season_start_year-1,season_start_year-2,season_start_year-3)
     hist=[]
-    for y in years:
-        try: x=UnderstatSource().league_players(y); x['season']=y; hist.append(x)
-        except Exception as e: report.notes.append(f'Understat {y} unavailable: {type(e).__name__}')
+    if use_understat:
+        for y in years:
+            try: x=UnderstatSource().league_players(y); x['season']=y; hist.append(x)
+            except Exception as e: report.notes.append(f'Understat {y} unavailable: {type(e).__name__}')
+    else:
+        report.notes.append('Understat skipped: modalità rapida.')
     if hist:
         agg=_weighted_player_history(hist,[.58,.27,.15]); master,unmatched=fuzzy_join(master,agg,'_stats',89); report.notes.append(f'Understat: {len(agg)} historical aggregates; {len(unmatched)} unmatched.')
     if use_kickest:
@@ -118,6 +130,12 @@ def build_dataset(season_start_year:int,fanta_season_label:str,football_token=No
             b=BigBallsSource(bigballs_token).big_five_history(list(years)); master,unmatched=fuzzy_join(master,b,'_bigfive',90) if len(b) else (master,[])
         except Exception as e:report.notes.append(f'BigBalls unavailable: {type(e).__name__}')
     elif use_big_five_newcomer_history: report.notes.append('BigBalls skipped: no token.')
-    master['has_market_data']=master.get('fvm_1000',pd.Series(index=master.index,dtype=float)).notna(); master['has_history']=pd.to_numeric(master.get('minutes',0),errors='coerce').fillna(0).gt(0) if 'minutes' in master else False; master['has_external_history']=pd.to_numeric(master.get('external_minutes',0),errors='coerce').fillna(0).gt(0) if 'external_minutes' in master else False; master['has_kickest']=master.get('kickest_source',pd.Series(index=master.index,dtype=object)).notna(); master['has_team_context']=master.get('team_attack_strength',pd.Series(index=master.index,dtype=float)).notna(); master['has_clubelo']=master.get('team_elo',pd.Series(index=master.index,dtype=float)).notna(); master['has_schedule_context']=master.get('schedule_ease_factor',pd.Series(index=master.index,dtype=float)).notna(); master['has_fantasy_history']=master.get('dev_avg_vote',master.get('fco_avg_vote',pd.Series(index=master.index,dtype=float))).notna(); master['has_api_football']=master.get('api_football_player_id',pd.Series(index=master.index,dtype=float)).notna()
-    master['data_confidence']=(.14+.20*master.has_market_data.astype(float)+.18*master.has_history.astype(float)+.14*master.has_kickest.astype(float)+.08*master.has_team_context.astype(float)+.05*master.has_clubelo.astype(float)+.03*master.has_schedule_context.astype(float)+.10*master.has_fantasy_history.astype(float)+.08*master.has_api_football.astype(float)).clip(0,1)
+    master['has_market_data']=master.get('fvm_1000',pd.Series(index=master.index,dtype=float)).notna(); master['has_history']=pd.to_numeric(master.get('minutes',0),errors='coerce').fillna(0).gt(0) if 'minutes' in master else False; master['has_external_history']=pd.to_numeric(master.get('external_minutes',0),errors='coerce').fillna(0).gt(0) if 'external_minutes' in master else False; master['has_current_fantasy_stats']=pd.to_numeric(master.get('current_appearances',0),errors='coerce').fillna(0).gt(0) if 'current_appearances' in master else False; master['has_kickest']=master.get('kickest_source',pd.Series(index=master.index,dtype=object)).notna(); master['has_team_context']=master.get('team_attack_strength',pd.Series(index=master.index,dtype=float)).notna(); master['has_clubelo']=master.get('team_elo',pd.Series(index=master.index,dtype=float)).notna(); master['has_schedule_context']=master.get('schedule_ease_factor',pd.Series(index=master.index,dtype=float)).notna(); master['has_fantasy_history']=master.get('dev_avg_vote',master.get('fco_avg_vote',pd.Series(index=master.index,dtype=float))).notna(); master['has_api_football']=master.get('api_football_player_id',pd.Series(index=master.index,dtype=float)).notna()
+    master['data_confidence']=(.08+.12*master.has_market_data.astype(float)+.22*master.has_history.astype(float)+.18*master.has_external_history.astype(float)+.10*master.has_current_fantasy_stats.astype(float)+.08*master.has_kickest.astype(float)+.06*master.has_team_context.astype(float)+.04*master.has_clubelo.astype(float)+.02*master.has_schedule_context.astype(float)+.07*master.has_fantasy_history.astype(float)+.03*master.has_api_football.astype(float)).clip(0,1)
+    eligibility=master.apply(prediction_eligibility,axis=1).map(lambda result:bool(result[0]))
+    report.prediction_total=len(master)
+    report.prediction_eligible=int(eligibility.sum())
+    report.prediction_coverage=float(eligibility.mean()) if len(master) else 0.0
+    status='OK' if report.prediction_majority_ready else 'SOTTO SOGLIA'
+    report.notes.append(f'Copertura valutazione indipendente: {report.prediction_eligible}/{report.prediction_total} ({report.prediction_coverage:.1%}) · target maggioranza > {report.prediction_coverage_target:.0%}: {status}.')
     return master,report

@@ -5,6 +5,11 @@ from .models import LeagueRules
 
 ROLE_GOAL_FIELD={'P':'goal_gk','D':'goal_def','C':'goal_mid','A':'goal_fwd'}
 MIN_PREDICTION_MINUTES=90.0
+MIN_FANTASY_HISTORY_APPEARANCES=2.0
+MIN_CURRENT_APPEARANCES=1.0
+FANTASY_APPEARANCE_EQUIV_MINUTES=65.0
+CURRENT_APPEARANCE_EQUIV_MINUTES=70.0
+CURRENT_FORM_PRIOR_MINUTES=1200.0
 
 def _num(row,col,default=0.0):
     try:
@@ -22,13 +27,41 @@ def prediction_eligibility(row:pd.Series)->tuple[bool,str]:
     # Source-specific minutes are normalised into ``minutes`` by the pipeline.
     hist=_num(row,'minutes',0)
     ext=_num(row,'external_minutes',0)
+    fantasy_apps=_num(row,'dev_appearances',0)
+    current_apps=_num(row,'current_appearances',0)
     observed=max(hist,ext)
     if observed>=MIN_PREDICTION_MINUTES:
         source='storico Serie A' if hist>=MIN_PREDICTION_MINUTES else 'storico estero'
-        return True,f'Dati sufficienti ({source}: {observed:.0f} minuti)'
+        current=f'; stagione corrente: {current_apps:.0f} presenze a voto' if current_apps>0 else ''
+        return True,f'Dati sufficienti ({source}: {observed:.0f} minuti{current})'
+    if fantasy_apps>=MIN_FANTASY_HISTORY_APPEARANCES:
+        current=f'; stagione corrente: {current_apps:.0f} presenze a voto' if current_apps>0 else ''
+        return True,f'Dati sufficienti (storico fantasy: {fantasy_apps:.0f} presenze{current})'
+    if current_apps>=MIN_CURRENT_APPEARANCES:
+        return True,f'Copertura minima: {current_apps:.0f} presenze a voto nella stagione corrente; predizione a bassa confidenza'
     if observed>0:
         return False,f'Dati insufficienti: solo {observed:.0f} minuti osservati; minimo richiesto {MIN_PREDICTION_MINUTES:.0f}'
+    if fantasy_apps>0:
+        return False,f'Dati insufficienti: solo {fantasy_apps:.0f} presenza nello storico fantasy'
     return False,'Dati insufficienti: nessuno storico individuale con minutaggio disponibile'
+
+
+def _current_minutes_pace(row:pd.Series)->float:
+    apps=_num(row,'current_appearances',0)
+    if apps<=0:
+        return np.nan
+    matchdays=max(1.0,apps,_num(row,'current_league_matchdays',apps))
+    appearance_rate=float(np.clip(apps/matchdays,0,1))
+    return float(np.clip(3420*appearance_rate*(CURRENT_APPEARANCE_EQUIV_MINUTES/90),350,3000))
+
+
+def _blend_current_availability(prior:float,row:pd.Series)->tuple[float,bool]:
+    pace=_current_minutes_pace(row)
+    if np.isnan(pace):
+        return prior,False
+    matchdays=max(1.0,_num(row,'current_league_matchdays',1))
+    weight=float(np.clip(matchdays/(matchdays+10),0,.30))
+    return float((1-weight)*prior+weight*pace),True
 
 def estimate_minutes(row:pd.Series)->tuple[float,float,str]:
     """Estimate season minutes without fantasy-market information.
@@ -39,7 +72,7 @@ def estimate_minutes(row:pd.Series)->tuple[float,float,str]:
     """
     if pd.notna(row.get('projected_minutes',np.nan)):
         pm=float(row['projected_minutes']); return float(np.clip(pm,0,3420)),.95,'manual'
-    hist=_num(row,'minutes'); ext=_num(row,'external_minutes'); start_prob=_num(row,'starting_probability',np.nan)
+    hist=_num(row,'minutes'); ext=_num(row,'external_minutes'); fantasy_apps=_num(row,'dev_appearances'); current_apps=_num(row,'current_appearances'); start_prob=_num(row,'starting_probability',np.nan)
     explicit_injury=row.get('injury_risk',np.nan)
     if pd.notna(explicit_injury):injury_risk=float(np.clip(_num(row,'injury_risk',0),0,.95)); injury_src='injury_risk'
     elif bool(row.get('currently_injured',False)):injury_risk=.45; injury_src='current_injury_flag'
@@ -48,15 +81,31 @@ def estimate_minutes(row:pd.Series)->tuple[float,float,str]:
     if hist>0:
         prior=np.clip(hist*.94,450,3200)
         if not np.isnan(start_prob):prior=.65*prior+.35*(3420*np.clip(start_prob,0,1))
+        prior,has_current=_blend_current_availability(prior,row)
         prior*=availability; conf=min(.92,.45+hist/5000)
         src='history'
         if not np.isnan(start_prob):src+='+starting_probability'
+        if has_current:src+='+current_availability'
         if injury_src:src+='+'+injury_src
         return float(prior),float(conf),src
     if ext>0:
         league_factor=float(np.clip(_num(row,'external_league_factor',.88),.55,1.15)); prior=np.clip(ext*.92*league_factor,350,3000)*availability
         if not np.isnan(start_prob):prior=.60*prior+.40*(3420*np.clip(start_prob,0,1))
-        return float(prior),float(min(.72,.35+ext/6500)),'external_history'+('+'+injury_src if injury_src else '')
+        prior,has_current=_blend_current_availability(prior,row)
+        src='external_history'+('+current_availability' if has_current else '')+('+'+injury_src if injury_src else '')
+        return float(prior),float(min(.72,.35+ext/6500)),src
+    if fantasy_apps>0:
+        prior=float(np.clip(fantasy_apps*FANTASY_APPEARANCE_EQUIV_MINUTES*.94,350,3000))
+        prior,has_current=_blend_current_availability(prior,row)
+        prior*=availability
+        conf=float(min(.62,.24+fantasy_apps/100+min(.08,current_apps*.025)))
+        src='fantasy_history_proxy'+('+current_availability' if has_current else '')+('+'+injury_src if injury_src else '')
+        return prior,conf,src
+    if current_apps>0:
+        prior=_current_minutes_pace(row)*availability
+        conf=float(min(.34,.18+.05*current_apps))
+        src='current_official_limited'+('+'+injury_src if injury_src else '')
+        return float(prior),conf,src
     return np.nan,np.nan,'insufficient_data'
 
 def project_player(row:pd.Series,rules:LeagueRules)->dict:
@@ -64,25 +113,49 @@ def project_player(row:pd.Series,rules:LeagueRules)->dict:
     if not available:
         return {
             'prediction_available':False,'prediction_status':'NON DISPONIBILE','prediction_reason':reason,
+            'prediction_confidence':'NON DISPONIBILE',
             'projected_minutes':np.nan,'minutes_confidence':np.nan,'minutes_source':None,
             'pred_goal90':np.nan,'pred_assist90':np.nan,'independent_points':np.nan,
             'projected_points_p10':np.nan,'projected_points_p50':np.nan,'projected_points_p90':np.nan,
             'reliability':np.nan,'modifier_marginal':np.nan,'vote_points':np.nan,'bonus_points':np.nan,
             'team_context_factor':np.nan,'team_defense_factor':np.nan,'schedule_factor_used':np.nan,
         }
-    role=str(row.get('role','C')).upper(); pm,min_conf,min_src=estimate_minutes(row); apps90=pm/90; hist=_num(row,'minutes'); ext=_num(row,'external_minutes')
-    goals90,assists90=safe_rate(row,'goals'),safe_rate(row,'assists'); xg90,xa90=safe_rate(row,'xg'),safe_rate(row,'xa')
-    if hist<=0 and ext>0:
+    role=str(row.get('role','C')).upper(); pm,min_conf,min_src=estimate_minutes(row); apps90=pm/90; hist=_num(row,'minutes'); ext=_num(row,'external_minutes'); fantasy_apps=_num(row,'dev_appearances'); current_apps=_num(row,'current_appearances')
+    priors={'P':(0,0),'D':(.045,.045),'C':(.11,.11),'A':(.28,.10)}; goal_prior,assist_prior=priors.get(role,(.1,.1))
+    if hist>0:
+        goals90,assists90=safe_rate(row,'goals'),safe_rate(row,'assists')
+        xg90=safe_rate(row,'xg') if pd.notna(row.get('xg',np.nan)) else goals90
+        xa90=safe_rate(row,'xa') if pd.notna(row.get('xa',np.nan)) else assists90
+        sample=min(1,hist/1800); realized_w=.35+.25*sample; pred_g90=realized_w*goals90+(1-realized_w)*xg90; pred_a90=realized_w*assists90+(1-realized_w)*xa90
+    elif ext>0:
         league_factor=float(np.clip(_num(row,'external_league_factor',.88),.55,1.15)); eg=_external_rate(row,'goals'); ea=_external_rate(row,'assists'); exg=_external_rate(row,'xg'); exa=_external_rate(row,'xa')
         goals90=(0 if np.isnan(eg) else eg)*league_factor; assists90=(0 if np.isnan(ea) else ea)*league_factor; xg90=(goals90 if np.isnan(exg) else exg*league_factor); xa90=(assists90 if np.isnan(exa) else exa*league_factor)
-    sample=min(1,max(hist,ext*.75)/1800); realized_w=.35+.25*sample; pred_g90=realized_w*goals90+(1-realized_w)*xg90; pred_a90=realized_w*assists90+(1-realized_w)*xa90
-    if hist<=0 and ext<=0:
-        priors={'P':(0,0),'D':(.045,.045),'C':(.11,.11),'A':(.28,.10)}; pred_g90,pred_a90=priors.get(role,(.1,.1))
+        sample=min(1,ext*.75/1800); realized_w=.35+.25*sample; pred_g90=realized_w*goals90+(1-realized_w)*xg90; pred_a90=realized_w*assists90+(1-realized_w)*xa90
+    elif fantasy_apps>0:
+        proxy_minutes=max(45.0,fantasy_apps*FANTASY_APPEARANCE_EQUIV_MINUTES)
+        dev_goals=_num(row,'dev_goals',0); dev_assists=_num(row,'dev_assists',0)
+        pred_g90=(goal_prior*900+dev_goals*90)/(900+proxy_minutes)
+        pred_a90=(assist_prior*900+dev_assists*90)/(900+proxy_minutes)
+    else:
+        pred_g90,pred_a90=goal_prior,assist_prior
+
+    # The opening matchdays matter, but a hot two-game run must not dominate a
+    # season forecast. Treat current events as a small sample against a 1,200-minute
+    # prior supplied by the historical/role model above.
+    if current_apps>0:
+        current_minutes=max(35.0,current_apps*CURRENT_APPEARANCE_EQUIV_MINUTES)
+        pred_g90=(pred_g90*CURRENT_FORM_PRIOR_MINUTES+_num(row,'current_goals',0)*90)/(CURRENT_FORM_PRIOR_MINUTES+current_minutes)
+        pred_a90=(pred_a90*CURRENT_FORM_PRIOR_MINUTES+_num(row,'current_assists',0)*90)/(CURRENT_FORM_PRIOR_MINUTES+current_minutes)
     attack_strength=float(np.clip(_num(row,'team_attack_strength',1.0),.65,1.35)); defense_strength=float(np.clip(_num(row,'team_defense_strength',1.0),.65,1.35)); elo_factor=float(np.clip(_num(row,'team_elo_factor',1.0),.72,1.38)); elo_blend=float(np.sqrt(elo_factor)); schedule=float(np.clip(_num(row,'schedule_ease_factor',1.0),.88,1.12))
     attack_strength=float(np.clip(attack_strength*elo_blend*(.6+.4*schedule),.60,1.45)); defense_strength=float(np.clip(defense_strength*elo_blend*(.7+.3*schedule),.60,1.45))
     pred_g90*=attack_strength; pred_a90*=attack_strength
     penalty_share=float(np.clip(_num(row,'penalty_share',0),0,1)); set_piece_share=float(np.clip(_num(row,'set_piece_share',0),0,1)); pred_g90+=.10*penalty_share; pred_a90+=.035*set_piece_share
-    base_vote=_num(row,'avg_vote',6.0); vote_points=base_vote*apps90*rules.base_vote_weight; goal_pts=pred_g90*apps90*getattr(rules,ROLE_GOAL_FIELD.get(role,'goal_mid')); assist_pts=pred_a90*apps90*rules.assist
+    base_vote=_num(row,'avg_vote',_num(row,'dev_avg_vote',6.0))
+    current_vote=_num(row,'current_avg_vote',np.nan)
+    if current_apps>0 and not np.isnan(current_vote):
+        vote_weight=current_apps/(current_apps+10)
+        base_vote=(1-vote_weight)*base_vote+vote_weight*current_vote
+    vote_points=base_vote*apps90*rules.base_vote_weight; goal_pts=pred_g90*apps90*getattr(rules,ROLE_GOAL_FIELD.get(role,'goal_mid')); assist_pts=pred_a90*apps90*rules.assist
     card_pts=safe_rate(row,'yellow_cards')*apps90*rules.yellow+safe_rate(row,'red_cards')*apps90*rules.red; own_goal_pts=safe_rate(row,'own_goals')*apps90*rules.own_goal
     clean_prob=float(np.clip(_num(row,'clean_sheet_prob',.28)*defense_strength,.05,.65)); clean_pts=clean_prob*apps90*(rules.clean_sheet_gk if role=='P' else rules.clean_sheet_def if role=='D' else 0)
     conceded_pts=saved_pen_pts=0.0
@@ -91,8 +164,12 @@ def project_player(row:pd.Series,rules:LeagueRules)->dict:
     penalty_miss_pts=safe_rate(row,'penalties_missed')*apps90*rules.penalty_missed
     modifier=0.0
     total=vote_points+goal_pts+assist_pts+card_pts+own_goal_pts+clean_pts+conceded_pts+saved_pen_pts+penalty_miss_pts
-    data_conf=_num(row,'data_confidence',.35); reliability=float(np.clip(.55*min_conf+.45*data_conf,0,1)); uncertainty=max(6.0,abs(total)*(.08+.28*(1-reliability))); p10=total-1.2816*uncertainty; p90=total+1.2816*uncertainty
-    return {'prediction_available':True,'prediction_status':'DISPONIBILE','prediction_reason':reason,'projected_minutes':pm,'minutes_confidence':min_conf,'minutes_source':min_src,'pred_goal90':pred_g90,'pred_assist90':pred_a90,'independent_points':total,'projected_points_p10':p10,'projected_points_p50':total,'projected_points_p90':p90,'reliability':reliability,'modifier_marginal':modifier,'vote_points':vote_points,'bonus_points':total-vote_points,'team_context_factor':attack_strength,'team_defense_factor':defense_strength,'schedule_factor_used':schedule}
+    data_conf=_num(row,'data_confidence',.35); reliability=float(np.clip(.55*min_conf+.45*data_conf,0,1))
+    robust_history=hist>=MIN_PREDICTION_MINUTES or ext>=MIN_PREDICTION_MINUTES or fantasy_apps>=MIN_FANTASY_HISTORY_APPEARANCES
+    if not robust_history: reliability=min(reliability,.35)
+    confidence='ALTA' if reliability>=.70 else 'MEDIA' if reliability>=.45 else 'BASSA'
+    uncertainty=max(6.0,abs(total)*(.08+.28*(1-reliability))); p10=total-1.2816*uncertainty; p90=total+1.2816*uncertainty
+    return {'prediction_available':True,'prediction_status':'DISPONIBILE','prediction_reason':reason,'prediction_confidence':confidence,'projected_minutes':pm,'minutes_confidence':min_conf,'minutes_source':min_src,'pred_goal90':pred_g90,'pred_assist90':pred_a90,'independent_points':total,'projected_points_p10':p10,'projected_points_p50':total,'projected_points_p90':p90,'reliability':reliability,'modifier_marginal':modifier,'vote_points':vote_points,'bonus_points':total-vote_points,'team_context_factor':attack_strength,'team_defense_factor':defense_strength,'schedule_factor_used':schedule}
 
 def add_projections(df:pd.DataFrame,rules:LeagueRules)->pd.DataFrame:
     rows=[project_player(r,rules) for _,r in df.iterrows()]; return pd.concat([df.reset_index(drop=True),pd.DataFrame(rows)],axis=1)

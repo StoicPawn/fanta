@@ -22,10 +22,18 @@ class CoverageReport:
     duplicate_players: list[str] = field(default_factory=list)
     certification: str = 'UNVERIFIED'
     notes: list[str] = field(default_factory=list)
+    prediction_eligible: int = 0
+    prediction_total: int = 0
+    prediction_coverage: float = 0.0
+    prediction_coverage_target: float = 0.50
 
     @property
     def certified(self) -> bool:
         return self.certification == 'CERTIFIED'
+
+    @property
+    def prediction_majority_ready(self) -> bool:
+        return self.prediction_coverage > self.prediction_coverage_target
 
 
 def fuzzy_join(left: pd.DataFrame, right: pd.DataFrame, suffix: str, threshold: int = 88):

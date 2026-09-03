@@ -41,9 +41,9 @@ with list_tab:
         mask=view.player.astype(str).str.contains(query,case=False,na=False)
         if 'team' in view: mask|=view.team.astype(str).str.contains(query,case=False,na=False)
         view=view[mask]
-    cols=[c for c in ['player','team','role','prediction_status','prediction_reason','canonical_value','canonical_value_source','quotation','fvm_1000','independent_score_v1','independent_score_floor','independent_score_ceiling','independent_points','projected_points_p10','projected_points_p50','projected_points_p90','vorp','independent_fair_price','reliability','projected_minutes','model_xg90','model_xa90','independent_price_edge','independent_price_edge_conf_adj'] if c in view]
+    cols=[c for c in ['player','team','role','prediction_status','prediction_confidence','prediction_reason','canonical_value','canonical_value_source','quotation','fvm_1000','independent_score_v1','independent_score_floor','independent_score_ceiling','independent_points','projected_points_p10','projected_points_p50','projected_points_p90','vorp','independent_fair_price','reliability','projected_minutes','model_xg90','model_xa90','independent_price_edge','independent_price_edge_conf_adj'] if c in view]
     st.dataframe(view.sort_values(sort if sort in view else 'independent_score_v1',ascending=False)[cols],use_container_width=True,height=690,hide_index=True,column_config={
-        'player':'Giocatore','team':'Squadra','role':'R','independent_score_v1':st.column_config.NumberColumn('Score',format='%.1f'),
+        'player':'Giocatore','team':'Squadra','role':'R','prediction_confidence':'Confidenza','independent_score_v1':st.column_config.NumberColumn('Score',format='%.1f'),
         'independent_score_floor':st.column_config.NumberColumn('Floor',format='%.1f'),'independent_score_ceiling':st.column_config.NumberColumn('Ceiling',format='%.1f'),
         'canonical_value':st.column_config.NumberColumn('Valore canonico',format='%.1f'),'canonical_value_source':'Fonte valore canonico',
         'quotation':st.column_config.NumberColumn('Quotazione ufficiale',format='%.0f'),'fvm_1000':st.column_config.NumberColumn('FVM 1000',format='%.0f'),
@@ -60,6 +60,8 @@ with detail_tab:
     canonical_text=f"{float(canonical):.1f} {row.get('canonical_value_unit','')}" if pd.notna(canonical) else 'non disponibile nel Listone'
     if not has_prediction:
         st.warning(f"**Il modello non può fare una valutazione indipendente per {chosen}.** {row.get('prediction_reason','Dati insufficienti')}. Come riferimento resta disponibile la valutazione canonica: **{canonical_text}**.")
+    elif row.get('prediction_confidence')=='BASSA':
+        st.warning(f"**Valutazione indipendente a bassa confidenza.** {row.get('prediction_reason','Campione individuale limitato')}. Usala come intervallo prudenziale, non come prezzo puntuale certo.")
     a=st.columns(7)
     def metric_value(key,fmt):
         value=row.get(key)
@@ -69,7 +71,7 @@ with detail_tab:
     a[2].metric('VORP',metric_value('vorp','.1f'))
     a[3].metric('Fair price',metric_value('independent_fair_price','.0f'))
     a[4].metric('Valore canonico',f"{float(canonical):.1f}" if pd.notna(canonical) else '—',help=row.get('canonical_value_source'))
-    a[5].metric('Affidabilità',metric_value('reliability','.0%'))
+    a[5].metric('Affidabilità',metric_value('reliability','.0%'),help=f"Classe: {row.get('prediction_confidence','—')}")
     a[6].metric('Minuti',metric_value('projected_minutes','.0f'))
     c1,c2=st.columns(2)
     with c1:
