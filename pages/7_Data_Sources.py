@@ -11,6 +11,7 @@ from src.fanta_lab.config import get_secret, secret_status
 from src.fanta_lab.source_registry import registry_frame
 from src.fanta_lab.projection import prediction_eligibility
 from src.fanta_lab.independent_model import add_canonical_valuation
+from src.fanta_lab.persistence import autosave_active_slot
 from src.fanta_lab.ui import apply_theme,page_header,section,common_sidebar
 
 st.set_page_config(page_title='Data Sources · Fanta Auction Lab',page_icon='🗄️',layout='wide')
@@ -54,6 +55,7 @@ with setup_tab:
             fdf=load_user_list(list_file) if list_file else None
             master,report=build_dataset(season,label,football_token or None,fantasy_df=fdf,require_current_fanta=True,bigballs_token=bigballs_token or None,api_football_token=api_football_token or None,use_public_team_context=use_team and not fast,use_clubelo=use_elo and not fast,use_openfootball_schedule=not fast,use_fco_history=use_fco and not fast,use_fantacalcio_dev_history=use_dev and not fast,use_api_football=use_api and not fast,use_big_five_newcomer_history=use_big and not fast,use_kickest=not fast,use_understat=not fast)
             st.session_state.players=master; st.session_state.coverage=report; st.session_state.pop('scored',None)
+            autosave_active_slot(st.session_state)
             (st.success if report.certified else st.warning)(f'{len(master)} giocatori caricati · {report.certification}')
         except Exception as e: st.error(str(e))
 
@@ -103,7 +105,9 @@ with coverage_tab:
         if st.button('Aggancia prezzi medi di aste reali pubbliche',use_container_width=True):
             try:
                 market=load_real_auction_averages(); rules=st.session_state.get('rules'); managers=int(getattr(rules,'managers',8)); budget=int(getattr(rules,'budget',500))
-                st.session_state.players=attach_market_prior(df,market,managers,budget); st.session_state.pop('scored',None); st.success(f'Prior aste reali agganciato · {len(market)} righe sorgente'); st.rerun()
+                st.session_state.players=attach_market_prior(df,market,managers,budget); st.session_state.pop('scored',None); autosave_active_slot(st.session_state); st.success(f'Prior aste reali agganciato · {len(market)} righe sorgente'); st.rerun()
             except Exception as e: st.warning(f'Fonte aste non disponibile: {e}')
         show=[c for c in ['player','team','role','prediction_status','prediction_confidence','prediction_reason','canonical_value','canonical_value_source','quotation','fvm_1000','market_auction_price','current_appearances','current_avg_vote','current_goals','current_assists','minutes','xg','xa','dev_avg_vote','af_rating','currently_injured','external_minutes','team_attack_strength','team_defense_strength','team_elo','data_confidence'] if c in display_df]
         st.dataframe(display_df[show].sort_values('data_confidence',ascending=False) if 'data_confidence' in show else display_df[show],use_container_width=True,height=610,hide_index=True,column_config={'data_confidence':st.column_config.ProgressColumn('Confidenza dati',min_value=0,max_value=1,format='%.0%%')})
+
+autosave_active_slot(st.session_state)

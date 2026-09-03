@@ -8,6 +8,7 @@ ROOT=Path(__file__).parents[1]; sys.path.insert(0,str(ROOT))
 from src.fanta_lab.models import LeagueRules, AuctionPurchase
 from src.fanta_lab.auction import AuctionState
 from src.fanta_lab.health import dataset_health, auction_health
+from src.fanta_lab.persistence import autosave_active_slot
 from src.fanta_lab.ui import apply_theme,page_header,section,common_sidebar
 
 st.set_page_config(page_title='Advanced settings & health',page_icon='🩺',layout='wide')
@@ -69,3 +70,5 @@ with checklist:
     done=sum(checks.values()); st.metric('Checklist completata',f'{done}/{len(checks)}')
     for label,ok in checks.items():
         (st.success if ok else st.warning)(('OK · ' if ok else 'DA VERIFICARE · ')+label)
+
+autosave_active_slot(st.session_state)
